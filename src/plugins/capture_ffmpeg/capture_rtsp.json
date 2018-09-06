@@ -1,0 +1,8 @@
+{
+    "debug":	true,
+    "thread":	true,
+    "device":	"rtsp://kkm-videocam:554/live1.sdp",
+    "format":	"rtsp",
+    "tick":	300,
+    "scale":	true
+}

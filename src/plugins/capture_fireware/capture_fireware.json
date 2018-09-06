@@ -1,0 +1,7 @@
+{
+    "debug":	true,
+    "thread":   true,
+    "guid":	"auto",
+    "tick":     30,
+    "scale":    true
+}

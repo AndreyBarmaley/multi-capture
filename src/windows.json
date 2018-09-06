@@ -1,0 +1,108 @@
+{
+    "display:fullscreen": false,
+    "display:geometry":	[ 1024, 768 ],
+    "font:file":	"terminus.ttf",
+    "font:size":	"16",
+    "font:blend":	"false",
+    "gallery":	{
+	    "position":	[ 10, 10, 160, 740 ],
+	    "background": "navy"
+	},
+    "windows":
+	[
+	    {
+		"label:name":	"input1",
+		"label:color":	"yellow",
+
+		"position":	[694, 10, 320, 240],
+
+		"capture":	{
+			    "name":	"capture_image",
+			    "config":	{
+					    "debug":    false,
+					    "thread":   true,
+					    "file":     "/var/tmp/back.png",
+					    "tick":     3000,
+					    "static":   false,
+					    "scale":    true
+					}
+			}
+	    },
+	    {
+		"label:name":	"input2",
+		"label:color":	"yellow",
+
+		"position":	[694, 260, 320, 240],
+
+		"capture":	{
+			    "name":	"capture_image",
+			    "config":	{
+					    "debug":    false,
+					    "thread":   false,
+					    "file":     "/var/tmp/tmp462501.jpg",
+					    "tick":     0,
+					    "static":   true,
+					    "scale":    true
+					}
+			}
+	    },
+	    {
+		"label:name":	"input3",
+		"label:color":	"yellow",
+
+		"position":	[160, 10, 480, 320],
+
+		"capture":	{
+			    "name":	"capture_ffmpeg",
+			    "config":	{
+					    "debug":    false,
+					    "thread":   true,
+					    "device":   "/dev/video0",
+					    "format":   "video4linux2",
+					    "tick":     30,
+					    "scale":    true
+					}
+			},
+		"storage": {
+			    "name":	"storage_file",
+			    "config":	{
+					    "debug":  false,
+					    "thread": true,
+					    "format:description": "strftime",
+					    "format": "/var/tmp/input3/%Y%m%d_%H%M%S.png",
+					    "signals":	[ "mouse:click" ]
+					}
+			    }
+	    },
+	    {
+		"label:name":	"input4",
+		"label:color":	"transparent",
+
+		"position":	[180, 340, 480, 320],
+
+		"capture":	{
+			    "name":	"capture_ffmpeg",
+			    "config":	{
+					    "debug":    false,
+					    "thread":   true,
+					    "device":   "rtsp://videocam:554/live1.sdp",
+					    "format":   "rtsp",
+					    "tick":     30,
+					    "scale":    true
+					}
+			},
+		"storage": {
+			    "name":	"storage_file",
+			    "config":	{
+					    "debug":  true,
+					    "thread": true,
+					    "format:description": "strftime",
+					    "format": "/var/tmp/input4/%Y%m%d_%H%M%S.png",
+					    "signals":	[ "mouse:click" ]
+					}
+			    }
+	    }
+	],
+    "signals": [
+	]
+}

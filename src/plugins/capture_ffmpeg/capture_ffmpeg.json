@@ -1,0 +1,8 @@
+{
+    "debug":	false,
+    "thread":	true,
+    "device":	"/dev/video0",
+    "format":	"video4linux2",
+    "tick":	30,
+    "scale":	true
+}

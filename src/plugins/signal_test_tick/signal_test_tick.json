@@ -1,0 +1,5 @@
+{
+    "debug":	true,
+    "signal":	"signal_test_tick",
+    "tick":	5000
+}

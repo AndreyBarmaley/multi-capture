@@ -1,0 +1,6 @@
+{
+    "debug":	false,
+    "thread":	true,
+    "exec":	"/var/tmp/fly-capture-store.sh",
+    "image":	"/var/tmp/fly-capture-put.ppm"
+}

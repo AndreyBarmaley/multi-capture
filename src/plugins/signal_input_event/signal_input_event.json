@@ -1,0 +1,10 @@
+{
+    "debug":	true,
+    "thread":	true,
+    "device":	"/dev/input/event15",
+    "delay":	100,
+    "event:type": 1,
+    "event:code": 288,
+    "event:value": -1,
+    "signal":	"signal_input_joystick"
+}
