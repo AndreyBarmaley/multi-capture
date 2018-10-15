@@ -1,0 +1,9 @@
+{
+    "debug":	true,
+    "thread":	true,
+    "signal":	"signal_dbus_test1",
+    "dbus:system":    true,
+    "dbus:object":    "ru.baikal.dc.pedal",
+    "dbus:interface": "ru.baikal.dc.pedal.interface",
+    "dbus:signal":    "takeSnapshot"
+}
