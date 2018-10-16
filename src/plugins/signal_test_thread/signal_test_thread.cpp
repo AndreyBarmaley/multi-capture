@@ -61,7 +61,7 @@ void* signal_test_thread_init(const JsonObject & config)
 
     signal_test_thread_t* st = & signal_test_thread_vals;
 
-    st->is_debug = config.getBoolean("debug", "false");
+    st->is_debug = config.getBoolean("debug", false);
     st->signal = config.getString("signal");
  
     DEBUG("params: " << "signal = " << st->signal);

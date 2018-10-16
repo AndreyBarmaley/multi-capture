@@ -79,7 +79,7 @@ void* capture_script_init(const JsonObject & config)
     DEBUG("spool index: " << devindex);
     capture_script_t* st = & capture_script_vals[devindex];
 
-    st->is_debug = config.getBoolean("debug", "false");
+    st->is_debug = config.getBoolean("debug", false);
     st->exec = config.getString("exec");
     st->result = config.getString("result");
 

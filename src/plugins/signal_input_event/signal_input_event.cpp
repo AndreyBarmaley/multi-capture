@@ -88,7 +88,7 @@ void* signal_input_event_init(const JsonObject & config)
     DEBUG("spool index: " << devindex);
     signal_input_event_t* st = & signal_input_event_vals[devindex];
 
-    st->is_debug = config.getBoolean("debug", "false");
+    st->is_debug = config.getBoolean("debug", false);
     st->signal = config.getString("signal");
     st->device = config.getString("device");
     st->delay = config.getInteger("delay", 100);

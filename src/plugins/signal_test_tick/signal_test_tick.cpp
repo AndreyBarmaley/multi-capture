@@ -61,7 +61,7 @@ void* signal_test_tick_init(const JsonObject & config)
 
     signal_test_tick_t* st = & signal_test_tick_vals;
 
-    st->is_debug = config.getBoolean("debug", "false");
+    st->is_debug = config.getBoolean("debug", false);
     st->signal = config.getString("signal");
  
     DEBUG("params: " << "signal = " << st->signal);

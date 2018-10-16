@@ -2,7 +2,7 @@
  *   Copyright (C) 2018 by FlyCapture team <public.irkutsk@gmail.com>      *
  *                                                                         *
  *   Part of the FlyCapture engine:                                        *
- *   https://launchpad.net/fly_capture                                     *
+ *   https://github.com/AndreyBarmaley/fly-capture                         *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU General Public License as published by  *
@@ -36,9 +36,11 @@ struct signal_dbus_signal_t
     bool	is_used;
     bool        is_debug;
     std::string system_signal;
+    std::string dbus_name;
     std::string dbus_object;
     std::string dbus_interface;
     std::string dbus_signal;
+    std::string dbus_autostart;
     DBusConnection* dbus_conn;
 
     signal_dbus_signal_t() : is_used(false), is_debug(false), dbus_conn(NULL) {}
@@ -48,7 +50,7 @@ struct signal_dbus_signal_t
         is_used = false;
         is_debug = false;
         system_signal.clear();
-	dbus_object.clear();
+	dbus_name.clear();
 	dbus_interface.clear();
 	dbus_signal.clear();
 	dbus_conn = NULL;
@@ -69,6 +71,56 @@ const char* signal_dbus_signal_get_name(void)
 int signal_dbus_signal_get_version(void)
 {
     return 20180817;
+}
+
+int signal_dbus_autostart(signal_dbus_signal_t* st)
+{
+    if(st->is_debug) DEBUG("version: " << signal_dbus_signal_get_version());
+
+    // create a new method call and check for errors
+    DBusMessage* msg = dbus_message_new_method_call(st->dbus_name.c_str(), st->dbus_object.c_str(), st->dbus_interface.c_str(), st->dbus_autostart.c_str());
+
+    if(NULL == msg)
+    {
+	ERROR("message is null");
+	return 0;
+    }
+
+    // send message and get a handle for a reply
+    DBusPendingCall* pending;
+    if(!dbus_connection_send_with_reply (st->dbus_conn, msg, &pending, -1  /* -1 is default timeout */))
+    {
+	ERROR("out of memory");
+	return 0;
+    }
+
+    if(NULL == pending)
+    {
+	ERROR("pending call is null");
+	return 0;
+    }
+    dbus_connection_flush(st->dbus_conn);
+    if(st->is_debug) VERBOSE("request sent");
+
+    // free message
+    dbus_message_unref(msg);
+
+    // block until we recieve a reply
+    dbus_pending_call_block(pending);
+
+    // get the reply message
+    msg = dbus_pending_call_steal_reply(pending);
+    if(NULL == msg)
+    {
+	ERROR("reply is null");
+	return 0;
+    }
+
+    // free the pending message handle
+    dbus_pending_call_unref(pending);
+    dbus_message_unref(msg);
+
+   return 1;
 }
 
 void* signal_dbus_signal_init(const JsonObject & config)
@@ -111,11 +163,13 @@ void* signal_dbus_signal_init(const JsonObject & config)
         return NULL;
     }
 
-    st->dbus_object = config.getString("dbus:object", "org.test.dbus.object");
+    st->dbus_name = config.getString("dbus:name", "org.test.dbus");
+    st->dbus_object = config.getString("dbus:object", "/org/test/dbus/object");
     st->dbus_interface = config.getString("dbus:interface", "org.test.dbus.interface");
     st->dbus_signal = config.getString("dbus:signal", "test_signal");
+    st->dbus_autostart = config.getString("dbus:autostart");
 
-    int ret = dbus_bus_request_name(st->dbus_conn, st->dbus_object.c_str(), DBUS_NAME_FLAG_REPLACE_EXISTING , &dbus_err);
+    int ret = dbus_bus_request_name(st->dbus_conn, st->dbus_name.c_str(), DBUS_NAME_FLAG_REPLACE_EXISTING , &dbus_err);
     if(dbus_error_is_set(&dbus_err))
     {
 	ERROR("dbus_bus_request_name: " << dbus_err.message);
@@ -147,6 +201,7 @@ void* signal_dbus_signal_init(const JsonObject & config)
 
     DEBUG("params: " << "signal = " << st->system_signal);
     DEBUG("params: " << "dbus:system" << " = " << (dbusIsSystem ? "true" : "false"));
+    DEBUG("params: " << "dbus:name" << " = " << st->dbus_name);
     DEBUG("params: " << "dbus:object" << " = " << st->dbus_object);
     DEBUG("params: " << "dbus:interface" << " = " << st->dbus_interface);
     DEBUG("params: " << "dbus:match" << " = " << matchForm);
@@ -154,6 +209,9 @@ void* signal_dbus_signal_init(const JsonObject & config)
 
     if(dbus_error_is_set(&dbus_err))
 	dbus_error_free(&dbus_err);
+
+    if(st->dbus_autostart.size())
+	signal_dbus_autostart(st);
 
     DEBUG("init complete");
 

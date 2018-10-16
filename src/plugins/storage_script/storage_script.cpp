@@ -84,7 +84,7 @@ void* storage_script_init(const JsonObject & config)
     DEBUG("spool index: " << devindex);
     storage_script_t* st = & storage_script_vals[devindex];
 
-    st->is_debug = config.getBoolean("debug", "false");
+    st->is_debug = config.getBoolean("debug", false);
     st->exec = config.getString("exec");
     st->image = config.getString("image");
 

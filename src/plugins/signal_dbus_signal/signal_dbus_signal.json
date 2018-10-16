@@ -3,7 +3,9 @@
     "thread":	true,
     "signal":	"signal_dbus_test1",
     "dbus:system":    true,
-    "dbus:object":    "ru.baikal.dc.pedal",
-    "dbus:interface": "ru.baikal.dc.pedal.interface",
-    "dbus:signal":    "takeSnapshot"
+    "dbus:name":    "org.test.dbus",
+    "dbus:object":    "/org/test/dbus/object",
+    "dbus:interface": "org.test.dbus.interface",
+    "dbus:autostart":    "run_service",
+    "dbus:signal":    "take_snapshot"
 }
