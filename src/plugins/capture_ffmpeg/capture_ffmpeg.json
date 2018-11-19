@@ -3,6 +3,9 @@
     "thread":	true,
     "device":	"/dev/video0",
     "format":	"video4linux2",
+    "video4linux2:size": [640, 480],
+    "video4linux2:standard": "PAL",
+    "video4linux2:input": "s-video",
     "tick":	30,
     "scale":	true
 }

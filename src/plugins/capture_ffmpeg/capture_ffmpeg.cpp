@@ -26,6 +26,9 @@
 extern "C" {
 #endif
 
+#include <unistd.h>
+#include <cctype>
+
 #include "libavdevice/avdevice.h"
 #include "libavcodec/avcodec.h"
 #include "libavformat/avformat.h"
@@ -48,9 +51,9 @@ struct capture_ffmpeg_t
 
     AVFormatContext*	format_ctx;
     AVCodecContext*	codec_ctx;
-    size_t		stream_index;
+    int			stream_index;
 
-    capture_ffmpeg_t() : is_used(false), is_debug(false), format_ctx(NULL), codec_ctx(NULL), stream_index(0) {}
+    capture_ffmpeg_t() : is_used(false), is_debug(false), format_ctx(NULL), codec_ctx(NULL), stream_index(-1) {}
 
     void clear(void)
     {
@@ -59,7 +62,7 @@ struct capture_ffmpeg_t
 	surface.reset();
 	format_ctx = NULL;
 	codec_ctx = NULL;
-	stream_index = 0;
+	stream_index = -1;
     }
 };
 
@@ -76,7 +79,56 @@ const char* capture_ffmpeg_get_name(void)
 
 int capture_ffmpeg_get_version(void)
 {
-    return 20180817;
+    return 20181119;
+}
+
+#include <fcntl.h>
+#include <sys/ioctl.h>
+#include <linux/videodev2.h>
+
+std::string capture_ffmpeg_v4l2_convert_name(__u8* ptr, int sz)
+{
+    std::string res;
+
+    for(int it = 0; it < sz; ++it)
+    {
+	if(! isgraph(ptr[it])) break;
+	res.append(1, tolower(ptr[it]));
+    }
+
+    return res;
+}
+
+int capture_ffmpeg_v4l2_channel_input(const std::string & dev, const std::string & channel)
+{
+    int fd = open(dev.c_str(), O_RDONLY);
+    int res = 0;
+
+    if(0 <= fd)
+    {
+	for(int index = 0;;index++)
+	{
+    	    struct v4l2_input st_input;
+    	    memset(&st_input, 0, sizeof(st_input));
+    	    st_input.index = index;
+
+    	    if(ioctl(fd, VIDIOC_ENUMINPUT, &st_input) < 0)
+        	break;
+
+	    std::string input = capture_ffmpeg_v4l2_convert_name(st_input.name, 32);
+	    VERBOSE("available input: " << input);
+
+    	    if(0 == channel.compare(input))
+	    {
+		VERBOSE("selected input: " << channel << ", " << index);
+		res = index;
+	    }
+	}
+
+	close(fd);
+    }
+
+    return res;
 }
 
 void* capture_ffmpeg_init(const JsonObject & config)
@@ -115,9 +167,7 @@ void* capture_ffmpeg_init(const JsonObject & config)
     int err = 0;
 
 #ifdef FFMPEG_NEW_API
-#if LIBAVFORMAT_VERSION_MAJOR == 56
     av_register_all();
-#endif
     avformat_network_init();
     avdevice_register_all();
 #else
@@ -128,13 +178,76 @@ void* capture_ffmpeg_init(const JsonObject & config)
     AVInputFormat *pFormatInput = av_find_input_format(capture_ffmpeg_format.c_str());
 
 #ifdef FFMPEG_NEW_API
-    err = avformat_open_input(& st->format_ctx, capture_ffmpeg_device.c_str(), pFormatInput, NULL);
+    AVDictionary* v4l2Params = NULL;
+    AVDictionary** curParams = NULL;
+
+    if(capture_ffmpeg_format == "video4linux2")
+    {
+	if(config.hasKey("video4linux2:standard"))
+	{
+	    std::string v4l2_standard = String::toUpper(config.getString("video4linux2:standard", "PAL"));
+	    DEBUG("params: " << "video4linux2:standard = " << v4l2_standard);
+	    av_dict_set(& v4l2Params, "video_standard", v4l2_standard.c_str(), 0);
+	    curParams = & v4l2Params;
+	}
+
+	if(config.hasKey("video4linux2:input"))
+	{
+	    std::string v4l2_input = String::toLower(config.getString("video4linux2:input", "s-video"));
+	    DEBUG("params: " << "video4linux2:input = " << v4l2_input);
+	    int input = capture_ffmpeg_v4l2_channel_input(capture_ffmpeg_device, v4l2_input);
+	    av_dict_set_int(& v4l2Params, "video_input", input, 0);
+	    curParams = & v4l2Params;
+	}
+
+	if(config.hasKey("video4linux2:size"))
+	{
+	    Size v4l2_size = config.getSize("video4linux2:size", Size(720, 576));
+	    DEBUG("params: " << "video4linux2:size = " << v4l2_size.toString());
+	    std::string strsz = StringFormat("%1x%2").arg(v4l2_size.w).arg(v4l2_size.h);
+	    av_dict_set(& v4l2Params, "video_size", strsz.c_str(), 0);
+	    curParams = & v4l2Params;
+	}
+    }
+
+    err = avformat_open_input(& st->format_ctx, capture_ffmpeg_device.c_str(), pFormatInput, curParams);
 #else
-    err = av_open_input_file(& st->format_ctx, capture_ffmpeg_device.c_str(), pFormatInput, 0, NULL);
+    AVFormatParameters v4l2Params;
+    AVFormatParameters* curParams = NULL;
+
+    if(capture_ffmpeg_format == "video4linux2")
+    {
+	if(config.hasKey("video4linux2:standard"))
+	{
+	    std::string v4l2_standard = String::toUpper(config.getString("video4linux2:standard", "PAL"));
+	    DEBUG("params: " << "video4linux2:standard = " << v4l2_standard);
+	    v4l2Params.standard = v4l2_standard.c_str();
+	    curParams = & v4l2Params;
+	}
+
+	if(config.hasKey("video4linux2:input"))
+	{
+	    std::string v4l2_input = String::toLower(config.getString("video4linux2:input", "s-video"));
+	    DEBUG("params: " << "video4linux2:input = " << v4l2_input);
+	    v4l2Params.channel = capture_ffmpeg_v4l2_channel_input(capture_ffmpeg_device, v4l2_input);
+	    curParams = & v4l2Params;
+	}
+
+	if(config.hasKey("video4linux2:size"))
+	{
+	    Size v4l2_size = config.getSize("video4linux2:size", Size(720, 576));
+	    DEBUG("params: " << "video4linux2:size = " << v4l2_size.toString());
+	    v4l2Params.width = v4l2_size.w;
+	    v4l2Params.height = v4l2_size.h;
+	    curParams = & v4l2Params;
+	}
+    }
+
+    err = av_open_input_file(& st->format_ctx, capture_ffmpeg_device.c_str(), pFormatInput, 0, curParams);
 #endif
     if(err < 0)
     {
-    	ERROR("unable to open device: " << capture_ffmpeg_device);
+    	ERROR("unable to open device: " << capture_ffmpeg_device << ", error: " << err);
     	return NULL;
     }
 
@@ -146,48 +259,54 @@ void* capture_ffmpeg_init(const JsonObject & config)
 #endif
     if(err < 0)
     {
-    	ERROR("unable to find stream info");
+    	ERROR("unable to find stream info" << ", error: " << err);
     	return NULL;
     }
 
     // find video stream
-    st->stream_index = 0;
-    while(st->stream_index < st->format_ctx->nb_streams)
+    AVStream* av_stream = NULL;
+    int videoStreamIndex = 0;
+    for(; videoStreamIndex < st->format_ctx->nb_streams; ++videoStreamIndex)
     {
 #ifdef FFMPEG_NEW_API
-	if(st->format_ctx->
-	    streams[st->stream_index]->codecpar->codec_type == AVMEDIA_TYPE_VIDEO)
-    		break;
+	AVCodecParameters* codec = st->format_ctx->streams[videoStreamIndex]->codecpar;
 #else
-	if(st->format_ctx->
-	    streams[st->stream_index]->codec->codec_type == AVMEDIA_TYPE_VIDEO)
-        	break;
+	AVCodecContext* codec = st->format_ctx->streams[videoStreamIndex]->codec;
 #endif
-	st->stream_index++;
+	if(codec->codec_type == AVMEDIA_TYPE_VIDEO)
+	{
+	    st->stream_index = videoStreamIndex;
+	    av_stream = st->format_ctx->streams[videoStreamIndex];
+	    break;
+	}
     }
 
-    if(st->stream_index == st->format_ctx->nb_streams)
+    if(NULL == av_stream)
     {
-    	ERROR("unable to find video stream");
+    	ERROR("unable to find video stream" << ", error: " << err);
     	return NULL;
     }
 
     // find codec context
 #ifdef FFMPEG_NEW_API
-    AVCodec* codec = avcodec_find_decoder(st->format_ctx->streams[st->stream_index]->codecpar->codec_id);
+    AVCodec* codec = avcodec_find_decoder(av_stream->codecpar->codec_id);
     st->codec_ctx = avcodec_alloc_context3(codec);
-    avcodec_parameters_to_context(st->codec_ctx, st->format_ctx->streams[st->stream_index]->codecpar);
+    avcodec_parameters_to_context(st->codec_ctx, av_stream->codecpar);
     err = avcodec_open2(st->codec_ctx, codec, NULL);
 #else
-    st->codec_ctx = st->format_ctx->streams[st->stream_index]->codec;
+    st->codec_ctx = av_stream->codec;
     AVCodec* codec = avcodec_find_decoder(st->codec_ctx->codec_id);
     err = avcodec_open(st->codec_ctx, codec);
 #endif
     if(err < 0)
     {
-    	ERROR("unable to open codec");
+    	ERROR("unable to open codec" << ", error: " << err);
     	return NULL;
     }
+
+#ifdef FFMPEG_NEW_API
+    if(curParams) av_dict_free(curParams);
+#endif
 
     st->is_used = true;
     return st;
@@ -308,7 +427,7 @@ int capture_ffmpeg_frame_action(void* ptr)
     while(av_read_frame(st->format_ctx, &packet) >= 0)
     {
         // Is this a packet from the video stream?
-        if(packet.stream_index == static_cast<int>(st->stream_index))
+        if(packet.stream_index == st->stream_index)
         {
 #ifdef FFMPEG_NEW_API
             // Decode video frame
