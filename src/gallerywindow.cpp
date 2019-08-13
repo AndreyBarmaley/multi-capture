@@ -23,7 +23,7 @@
 #include "mainscreen.h"
 #include "gallerywindow.h"
 
-GalleryItem::GalleryItem(const Surface & sf, const std::string & label, Window & win) : WindowListItem(win), popupInfo(*this)
+GalleryItem::GalleryItem(const Surface & sf, const std::string & label, Window & win) : WindowListItem(win)
 {
     Size sz(win.width(), win.width() * sf.height() / sf.width());
 
@@ -35,15 +35,7 @@ GalleryItem::GalleryItem(const Surface & sf, const std::string & label, Window &
 
     MainScreen* main = static_cast<MainScreen*>(win.parent());
     if(main)
-    {
-	const FontRender & frs = main->fontRender(); 
-
-        Texture text = Display::renderText(frs, label, Color::Black);
-	Texture tx = Display::renderRect(Color::MidnightBlue, Color::Wheat, text.size() + Size(6, 6));
-
-	Display::renderTexture(text, text.rect(), tx, Rect(Point(3, 3), text.size()));
-	popupInfo.setTexture(tx);
-    }
+	toolTipInit(label, main->fontRender(), Color::Black, Color::Wheat, Color::MidnightBlue);
 
     setVisible(true);
 }
@@ -59,7 +51,7 @@ void GalleryItem::renderWindow(void)
 GalleryWindow::GalleryWindow(const Rect & pos, const Color & col, Window & win)
     : WindowListBox(pos, pos, pos.h > pos.w, win), backcol(col)
 {
-    setState(FlagOrderForeground);
+    setState(FlagLayoutForeground);
     setVisible(true);
 }
 

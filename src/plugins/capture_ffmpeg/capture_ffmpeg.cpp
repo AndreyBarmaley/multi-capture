@@ -166,12 +166,14 @@ void* capture_ffmpeg_init(const JsonObject & config)
 
     int err = 0;
 
-#ifdef FFMPEG_NEW_API
+#ifndef FF_API_NEXT
     av_register_all();
+#endif
+
+#ifdef FFMPEG_NEW_API
     avformat_network_init();
     avdevice_register_all();
 #else
-    av_register_all();
     avdevice_register_all();
 #endif
 

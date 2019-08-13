@@ -25,17 +25,8 @@
 
 #include "engine.h"
 
-class PopupInfo : public WindowToolTip
-{
-public:
-    PopupInfo(Window & win) : WindowToolTip(300, & win)
-    {
-    }
-};
-
 class GalleryItem : public WindowListItem
 {
-    PopupInfo           popupInfo;
     Texture		thumbnail;
 
 public:
