@@ -54,10 +54,10 @@ class VideoWindow : public Window, protected WindowParams
     int			signalPluginParamTickSave;
 
 protected:
-    void		tickEvent(u32 ms);
-    bool		userEvent(int, void*);
-    bool		keyPressEvent(int);
-    bool		mousePressEvent(const ButtonEvent &);
+    void		tickEvent(u32 ms) override;
+    bool		userEvent(int, void*) override;
+    bool		keyPressEvent(const KeySym &) override;
+    bool		mousePressEvent(const ButtonEvent &) override;
 
     void		renderSurface(void);
 
@@ -68,7 +68,7 @@ public:
     const std::string &	name(void) const { return labelName; }
     bool		isName(const std::string & str) const { return 0 == labelName.compare(str); }
 
-    void		renderWindow(void);
+    void		renderWindow(void) override;
 };
 
 #endif

@@ -61,7 +61,7 @@ VideoWindow::VideoWindow(const WindowParams & params, Window & parent) : Window(
 	
 	if(capture.config.isValid())
 	{
-	    capture.config.addString("window:parent", String::hex64(reinterpret_cast<std::uintptr_t>(this)));
+	    capture.config.addString("window:parent", String::pointer(this));
 	    capture.config.addSize("window:size", size());
 
 	    capturePlugin = new CapturePlugin(capture);
@@ -90,7 +90,7 @@ VideoWindow::VideoWindow(const WindowParams & params, Window & parent) : Window(
 	
 	    if(storage.config.isValid())
 	    {
-		storage.config.addString("window:parent", String::hex64(reinterpret_cast<std::uintptr_t>(this)));
+		storage.config.addString("window:parent", String::pointer(this));
 		storagePlugin = new StoragePlugin(storage);
 	    }
 	    else
@@ -292,7 +292,7 @@ bool VideoWindow::mousePressEvent(const ButtonEvent & coord)
     return false;
 }
 
-bool VideoWindow::keyPressEvent(int ch)
+bool VideoWindow::keyPressEvent(const KeySym & key)
 {
     // internal signal: key:keyname
     if(capturePlugin && capturePlugin->isInitComplete() && storagePlugin)
@@ -301,8 +301,8 @@ bool VideoWindow::keyPressEvent(int ch)
 
 	if(signal.size())
 	{
-	    std::string keystr = signal.substr(4, signal.size() - 4);
-	    if(Key::toKey(keystr) == ch)
+	    std::string keystr = String::toUpper(signal.substr(4, signal.size() - 4));
+	    if(keystr == key.keyname())
 	    {
 		DEBUG("receive signal: " << signal);
 		storagePlugin->setSurface(back);

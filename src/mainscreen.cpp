@@ -120,9 +120,9 @@ void MainScreen::renderWindow(void)
     renderClear(colorBack);
 }
 
-bool MainScreen::keyPressEvent(int key)
+bool MainScreen::keyPressEvent(const KeySym & key)
 {
-    if(key == Key::ESCAPE)
+    if(key.keycode() == Key::ESCAPE)
     {
         TermGUI::MessageBox msg(Settings::programName(), _("Exit from my super program?"),
 				    TermGUI::ButtonOk | TermGUI::ButtonCancel, fontRender(), *this);
@@ -133,7 +133,7 @@ bool MainScreen::keyPressEvent(int key)
         }
     }
     else
-    if(key == Key::F4)
+    if(key.keycode() == Key::F4)
     {
 	UCStringList list;
 	for(auto it = windows.begin(); it != windows.end(); ++it)

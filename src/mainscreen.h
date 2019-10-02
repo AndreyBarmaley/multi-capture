@@ -40,14 +40,14 @@ class MainScreen : public DisplayWindow
     bool		showWindowPositionsDialog(const Window*, Rect &);
 
 protected:
-    bool		keyPressEvent(int);
-    void                tickEvent(u32 ms);
+    bool		keyPressEvent(const KeySym &) override;
+    void                tickEvent(u32 ms) override;
 
 public:
     MainScreen(const JsonObject &);
     ~MainScreen();
 
-    void		renderWindow(void);
+    void		renderWindow(void) override;
     const FontRender &  fontRender(void) const;
     void		addImageGallery(const Surface &, const std::string &);
 };
