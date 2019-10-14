@@ -219,7 +219,7 @@ int CapturePlugin::initializeBackground(void* ptr)
 
 void CapturePlugin::generateBlueScreen(const std::string & label)
 {
-    Size winsz = config.getSize("window:size");
+    Size winsz = JsonUnpack::size(config, "window:size");
     blue = Surface(winsz);
     blue.clear(Color::Blue);
     const FontRender & frs = FontRenderSystem();

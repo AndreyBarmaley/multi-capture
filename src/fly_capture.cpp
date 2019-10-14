@@ -75,7 +75,7 @@ int main(int argc, char **argv)
 	    JsonObject jo = json.toObject();
 	    const std::string title = Settings::programName().append(", version: ").append(Settings::programVersion());
 
-	    Size geometry = jo.getSize("display:geometry", Size(1280, 800));
+	    Size geometry = JsonUnpack::size(jo, "display:geometry", Size(1280, 800));
 	    bool fullscreen = jo.getBoolean("display:fullscreen", false);
 
 	    if(! Display::init(title, geometry, fullscreen))

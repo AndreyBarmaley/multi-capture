@@ -248,7 +248,7 @@ void* capture_ffmpeg_init(const JsonObject & config)
 
 	if(config.hasKey("video4linux2:size"))
 	{
-	    Size v4l2_size = config.getSize("video4linux2:size", Size(720, 576));
+	    Size v4l2_size = JsonUnpack::size(config, "video4linux2:size", Size(720, 576));
 	    DEBUG("params: " << "video4linux2:size = " << v4l2_size.toString());
 	    v4l2Params.width = v4l2_size.w;
 	    v4l2Params.height = v4l2_size.h;
@@ -282,7 +282,7 @@ void* capture_ffmpeg_init(const JsonObject & config)
 
 	if(config.hasKey("video4linux2:size"))
 	{
-	    Size v4l2_size = config.getSize("video4linux2:size", Size(720, 576));
+	    Size v4l2_size = JsonUnpack::size(config, "video4linux2:size", Size(720, 576));
 	    DEBUG("params: " << "video4linux2:size = " << v4l2_size.toString());
 	    std::string strsz = StringFormat("%1x%2").arg(v4l2_size.w).arg(v4l2_size.h);
 	    av_dict_set(& v4l2Params, "video_size", strsz.c_str(), 0);
@@ -366,6 +366,13 @@ void capture_ffmpeg_quit(void* ptr)
     capture_ffmpeg_t* st = static_cast<capture_ffmpeg_t*>(ptr);
     if(st->is_debug) VERBOSE("version: " << capture_ffmpeg_get_version());
 
+#if LIBAVFORMAT_VERSION_MAJOR > 56
+    if(st->codec_ctx)
+    {
+       avcodec_free_context(& st->codec_ctx);
+       st->codec_ctx = NULL;
+    }
+#endif
 #ifdef FFMPEG_OLD_API
     if(st->codec_ctx) avcodec_close(st->codec_ctx);
     if(st->format_ctx) av_close_input_file(st->ormat_cts);
@@ -467,6 +474,8 @@ int capture_ffmpeg_frame_action(void* ptr)
 #endif
 
     AVPacket packet;
+    av_init_packet(&packet);
+
     int frameFinished = 0;
 
     while(av_read_frame(st->format_ctx, &packet) >= 0)
@@ -492,6 +501,9 @@ int capture_ffmpeg_frame_action(void* ptr)
                             st->codec_ctx->width, st->codec_ctx->height,
                             24, pFrameRGB->linesize[0], Rmask, Gmask, Bmask, Amask);
 #endif
+                av_frame_unref(pFrame);
+                av_frame_unref(pFrameRGB);
+ 
 		st->surface = Surface(sf).copy();
                 break;
             }

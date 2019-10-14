@@ -30,9 +30,9 @@
 WindowParams::WindowParams(const JsonObject & jo)
 {
     labelName = jo.getString("label:name");
-    labelColor = jo.getColor("label:color", Color::Red);
-    fillColor = jo.getColor("window:fill", Color::Navy);
-    position = jo.getRect("position");
+    labelColor = JsonUnpack::color(jo, "label:color", Color::Red);
+    fillColor = JsonUnpack::color(jo, "window:fill", Color::Navy);
+    position = JsonUnpack::rect(jo, "position");
 
     const JsonObject* jo2 = NULL;
 
@@ -62,7 +62,7 @@ VideoWindow::VideoWindow(const WindowParams & params, Window & parent) : Window(
 	if(capture.config.isValid())
 	{
 	    capture.config.addString("window:parent", String::pointer(this));
-	    capture.config.addSize("window:size", size());
+	    capture.config.addArray("window:size", JsonPack::size( size() ));
 
 	    capturePlugin = new CapturePlugin(capture);
 

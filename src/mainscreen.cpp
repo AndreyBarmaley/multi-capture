@@ -30,7 +30,7 @@
 
 MainScreen::MainScreen(const JsonObject & jo) : DisplayWindow(Color::Black), frs(NULL), gallery(NULL)
 {
-    colorBack = jo.getColor("display:background");
+    colorBack = jo.getString("display:background");
 
     frs = new FontRenderTTF(jo.getString("font:file"), jo.getInteger("font:size", 12), jo.getBoolean("font:blend", false));
     const JsonArray* ja = NULL;
@@ -87,8 +87,8 @@ MainScreen::MainScreen(const JsonObject & jo) : DisplayWindow(Color::Black), frs
     if(jo.isObject("gallery"))
     {
 	const JsonObject* jo2 = jo.getObject("gallery");
-	Rect pos = jo2->getRect("position");
-	Color back = jo2->getColor("background");
+	Rect pos = JsonUnpack::rect(*jo2, "position");
+	Color back = jo2->getString("background");
 	gallery = new GalleryWindow(pos, back, *this);
     }
 

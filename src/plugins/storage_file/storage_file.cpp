@@ -92,7 +92,7 @@ void* storage_file_init(const JsonObject & config)
     if(parent.size())
     {
 	DEBUG("parent found: " << parent);
-	std::uintptr_t ptr = String::toInt64(parent);
+	std::uintptr_t ptr = String::toLong(parent);
 	st->win = reinterpret_cast<Window*>(ptr);
     }
 
