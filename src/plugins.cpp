@@ -22,7 +22,6 @@
 
 #include <algorithm>
 
-#include "engine.h"
 #include "settings.h"
 #include "plugins.h"
 

@@ -22,7 +22,6 @@
 
 #include <algorithm>
 
-#include "engine.h"
 #include "mainscreen.h"
 #include "videowindow.h"
 
@@ -252,13 +251,10 @@ void VideoWindow::renderSurface(void)
 	    Rect rt2 = rect();
 
 	    if(capturePluginParamScale)
-		Window::renderSurface(back, rt1, rt2);
+		Display::renderSurface(back, rt1, Display::texture(), rt2 + Window::position());
 	    else
 	    {
-		if(rt1.w < rt2.w)
-		    Window::renderSurface(back, rt1, rt1);
-		else
-		    Window::renderSurface(back, rt2, rt2);
+		Window::renderSurface(back, rt1, (rt2.toSize() - rt1.toSize()) / 2);
 	    }
 	}
 	else

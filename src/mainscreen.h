@@ -23,7 +23,7 @@
 #ifndef _CNA_MAIN_SCREEN_
 #define _CNA_MAIN_SCREEN_
 
-#include "engine.h"
+#include "settings.h"
 
 class SignalPlugin;
 class VideoWindow;

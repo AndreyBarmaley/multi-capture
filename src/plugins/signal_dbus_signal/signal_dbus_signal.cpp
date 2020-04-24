@@ -22,7 +22,7 @@
 
 #include <cstring>
 
-#include "engine.h"
+#include "../../settings.h"
 #include "../../videowindow.h"
 
 #include "dbus/dbus.h"

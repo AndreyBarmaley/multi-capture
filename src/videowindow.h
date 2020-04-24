@@ -23,7 +23,7 @@
 #ifndef _CNA_VIDEO_WINDOW_
 #define _CNA_VIDEO_WINDOW_
 
-#include "engine.h"
+#include "settings.h"
 #include "plugins.h"
 
 enum { ActionNone = 0, ActionRenderWindow = 1, ActionBackStore = 2, ActionBackSignal = 3, ActionStoreComplete = 4 };

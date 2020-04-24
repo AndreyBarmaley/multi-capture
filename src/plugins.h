@@ -29,7 +29,7 @@
 #include <windows.h>
 #endif
 
-#include "engine.h"
+#include "settings.h"
 
 enum { PluginReturnTrue = 0, PluginReturnFalse = -1, PluginReturnClose = -2 };
 

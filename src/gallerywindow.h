@@ -23,7 +23,7 @@
 #ifndef _CNA_GALLERY_WINDOW_
 #define _CNA_GALLERY_WINDOW_
 
-#include "engine.h"
+#include "settings.h"
 
 class GalleryItem : public WindowListItem
 {

@@ -24,7 +24,7 @@
 #include <sstream>
 #include <cstring>
 
-#include "engine.h"
+#include "../../settings.h"
 
 #ifdef __cplusplus
 extern "C" {

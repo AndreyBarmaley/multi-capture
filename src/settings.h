@@ -25,6 +25,9 @@
 
 #include <string>
 
+#include "libswe.h"
+using namespace SWE;
+
 namespace Settings
 {
     std::string		programName(void);
