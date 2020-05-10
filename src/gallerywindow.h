@@ -24,26 +24,27 @@
 #define _CNA_GALLERY_WINDOW_
 
 #include "settings.h"
+class GalleryWindow;
 
-class GalleryItem : public WindowListItem
+class GalleryItem : public ListWidgetItem
 {
-    Texture		thumbnail;
+    Texture	thumbnail;
 
 public:
-    GalleryItem(const Surface &, const std::string &, Window &);
+    GalleryItem(const Surface &, const std::string &, GalleryWindow &);
 
-    void renderWindow(void);
+    void	renderWindow(void) override;
 };
 
-class GalleryWindow : public WindowListBox
+class GalleryWindow : public ListWidget
 {
-    Color		backcol;
+    Color	backcol;
 
 public:
-    GalleryWindow(const Rect &, const Color &, Window &);
+    GalleryWindow(const Point &, const Size &, const Color &, Window &);
 
-    void renderWindow(void);
-    void addImage(const Surface &, const std::string &);
+    void 	renderWindow(void) override;
+    void 	addImage(const Surface &, const std::string &);
 };
 
 

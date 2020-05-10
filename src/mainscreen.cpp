@@ -89,7 +89,7 @@ MainScreen::MainScreen(const JsonObject & jo) : DisplayWindow(Color::Black), frs
 	const JsonObject* jo2 = jo.getObject("gallery");
 	Rect pos = JsonUnpack::rect(*jo2, "position");
 	Color back = jo2->getString("background");
-	gallery = new GalleryWindow(pos, back, *this);
+	gallery = new GalleryWindow(pos.toPoint(), pos.toSize(), back, *this);
     }
 
     setVisible(true);

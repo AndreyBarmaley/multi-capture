@@ -23,7 +23,7 @@
 #include "mainscreen.h"
 #include "gallerywindow.h"
 
-GalleryItem::GalleryItem(const Surface & sf, const std::string & label, Window & win) : WindowListItem(win)
+GalleryItem::GalleryItem(const Surface & sf, const std::string & label, GalleryWindow & win) : ListWidgetItem(win)
 {
     Size sz(win.width(), win.width() * sf.height() / sf.width());
 
@@ -35,7 +35,7 @@ GalleryItem::GalleryItem(const Surface & sf, const std::string & label, Window &
 
     MainScreen* main = static_cast<MainScreen*>(win.parent());
     if(main)
-	toolTipInit(label, main->fontRender(), Color::Black, Color::Wheat, Color::MidnightBlue);
+	renderToolTip(label, main->fontRender(), Color::Black, Color::Wheat, Color::MidnightBlue);
 
     setVisible(true);
 }
@@ -48,8 +48,8 @@ void GalleryItem::renderWindow(void)
         renderRect(Color::Yellow, rect());
 }
 
-GalleryWindow::GalleryWindow(const Rect & pos, const Color & col, Window & win)
-    : WindowListBox(pos, pos, pos.h > pos.w, win), backcol(col)
+GalleryWindow::GalleryWindow(const Point & pos, const Size & sz, const Color & col, Window & win)
+    : ListWidget(pos, sz, sz.h > sz.w, & win), backcol(col)
 {
     setState(FlagLayoutForeground);
     setVisible(true);
@@ -58,10 +58,10 @@ GalleryWindow::GalleryWindow(const Rect & pos, const Color & col, Window & win)
 void GalleryWindow::renderWindow(void)
 {
     renderClear(backcol);
-    renderItems();
+    ListWidget::renderWindow();
 }
 
 void GalleryWindow::addImage(const Surface & sf, const std::string & label)
 {
-    insertItem(new GalleryItem(sf, label, *this));
+    addItem(new GalleryItem(sf, label, *this));
 }
