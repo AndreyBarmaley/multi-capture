@@ -443,7 +443,7 @@ int capture_fireware_frame_action(void* ptr)
 	if(st->rgb_data)
 	{
     	    SDL_Surface* sf = SDL_CreateRGBSurfaceWithFormatFrom(st->rgb_data, st->rgb_width, st->rgb_height, 24, st->rgb_width * 3, SDL_PIXELFORMAT_RGB24);
-            st->surface = Surface(sf).copy();
+            st->surface = Surface::copy(sf);
 
 	    delete [] st->rgb_data;
 	    st->rgb_data = NULL;

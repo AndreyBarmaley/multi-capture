@@ -504,7 +504,7 @@ int capture_ffmpeg_frame_action(void* ptr)
                 av_frame_unref(pFrame);
                 av_frame_unref(pFrameRGB);
  
-		st->surface = Surface(sf).copy();
+		st->surface = Surface::copy(sf);
                 break;
             }
         }
