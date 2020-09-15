@@ -182,17 +182,15 @@ bool VideoWindow::userEvent(int act, void* data)
 	    return true;
 
 	case ActionBackSignal:
-	    if(data)
+	    if(data && storagePlugin)
 	    {
 		const std::string* str = static_cast<const std::string*>(data);
-		if(storagePlugin && str)
+		std::string signal = storagePlugin->findSignal(*str);
+
+		if(signal.size())
 		{
-		    std::string signal = storagePlugin->findSignal(*str);
-		    if(signal.size())
-		    {
-			storagePlugin->setSurface(back);
-			storagePlugin->storeAction();
-		    }
+		    storagePlugin->setSurface(back);
+		    storagePlugin->storeAction();
 		}
 	    }
 	    // broadcast signal

@@ -372,11 +372,11 @@ void* capture_fireware_init(const JsonObject & config)
     else
     {
         st->dv_decoder = dv_decoder_new(0, 0, 0);
-        st->dv_decoder->quality = DV_QUALITY_BEST;
 
 	if(! st->dv_decoder)
 	    ERROR("DV decoder error");
 
+        st->dv_decoder->quality = DV_QUALITY_BEST;
         iec61883_dv_fb_start(st->iec61883_dv, st->channel);
 	VERBOSE("DV mode started");
     }

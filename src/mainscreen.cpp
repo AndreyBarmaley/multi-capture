@@ -125,7 +125,7 @@ bool MainScreen::keyPressEvent(const KeySym & key)
     if(key.keycode() == Key::ESCAPE)
     {
         TermGUI::MessageBox msg(Settings::programName(), _("Exit from my super program?"),
-				    TermGUI::ButtonOk | TermGUI::ButtonCancel, fontRender(), *this);
+				    TermGUI::ButtonOk | TermGUI::ButtonCancel, fontRender(), this);
         if(TermGUI::ButtonOk == msg.exec())
         {
 	    setVisible(false);
@@ -135,14 +135,16 @@ bool MainScreen::keyPressEvent(const KeySym & key)
     else
     if(key.keycode() == Key::F4)
     {
-	UCStringList list;
+	UnicodeList list;
 	for(auto it = windows.begin(); it != windows.end(); ++it)
-	    list << UCString((*it)->name(), Color::PaleGreen);
+	    list.emplace_back((*it)->name());
 
-        TermGUI::ListBox box("Edit Window Params", list, 4, fontRender(), *this);
+        TermGUI::ListBox box("Edit Window Params", list, 4, fontRender(), this);
+
+
         if(box.exec())
 	{
-	    auto it = std::find_if(windows.begin(), windows.end(), std::bind2nd(std::mem_fun(&VideoWindow::isName), box.result()));
+	    auto it = std::find_if(windows.begin(), windows.end(), [&](auto & win){ return win->isName(box.result()); });
 	    if(it != windows.end())
 	    {
 		Rect newPosition;
@@ -165,7 +167,7 @@ bool MainScreen::showWindowPositionsDialog(const Window* win, Rect & res)
     if(! win) return false;
 
     std::string def = StringFormat("%1x%2+%3+%4").arg(win->width()).arg(win->height()).arg(win->position().x).arg(win->position().y);
-    TermGUI::InputBox input("Set Window Positions", 20, def, fontRender(), *this);
+    TermGUI::InputBox input("Set Window Positions", 20, def, fontRender(), this);
     if(input.exec())
     {
 	const std::string & str = input.result();
