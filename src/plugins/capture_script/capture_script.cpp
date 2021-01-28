@@ -47,7 +47,7 @@ struct capture_script_t
 };
 
 #ifndef CAPTURE_SCRIPT_SPOOL
-#define CAPTURE_SCRIPT_SPOOL 4
+#define CAPTURE_SCRIPT_SPOOL 16
 #endif
 
 capture_script_t capture_script_vals[CAPTURE_SCRIPT_SPOOL];
@@ -59,7 +59,7 @@ const char* capture_script_get_name(void)
 
 int capture_script_get_version(void)
 {
-    return 20180817;
+    return 20210128;
 }
 
 void* capture_script_init(const JsonObject & config)
@@ -79,6 +79,7 @@ void* capture_script_init(const JsonObject & config)
     DEBUG("spool index: " << devindex);
     capture_script_t* st = & capture_script_vals[devindex];
 
+    st->is_used = true;
     st->is_debug = config.getBoolean("debug", false);
     st->exec = config.getString("exec");
     st->result = config.getString("result");
@@ -86,7 +87,6 @@ void* capture_script_init(const JsonObject & config)
     DEBUG("params: " << "exec = " << st->exec);
     DEBUG("params: " << "result = " << st->result);
 
-    st->is_used = true;
     return st;
 }
 

@@ -52,7 +52,7 @@ struct storage_script_t
 };
 
 #ifndef STORAGE_SCRIPT_SPOOL
-#define STORAGE_SCRIPT_SPOOL 4
+#define STORAGE_SCRIPT_SPOOL 16
 #endif
 
 storage_script_t storage_script_vals[STORAGE_SCRIPT_SPOOL];
@@ -64,7 +64,7 @@ const char* storage_script_get_name(void)
 
 int storage_script_get_version(void)
 {
-    return 20180817;
+    return 20210128;
 }
 
 void* storage_script_init(const JsonObject & config)

@@ -88,6 +88,7 @@
 					    "device":   "rtsp://videocam:554/live1.sdp",
 					    "format":   "rtsp",
 					    "tick":     30,
+					    "init:timeout": 5000,
 					    "scale":    true
 					}
 			},

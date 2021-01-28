@@ -64,7 +64,7 @@ const char* storage_file_get_name(void)
 
 int storage_file_get_version(void)
 {
-    return 20180817;
+    return 20210128;
 }
 
 void* storage_file_init(const JsonObject & config)

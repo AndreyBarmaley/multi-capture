@@ -71,7 +71,7 @@ struct capture_ffmpeg_t
 };
 
 #ifndef CAPTURE_FFMPEG_SPOOL
-#define CAPTURE_FFMPEG_SPOOL 4
+#define CAPTURE_FFMPEG_SPOOL 16
 #endif
 
 capture_ffmpeg_t capture_ffmpeg_vals[CAPTURE_FFMPEG_SPOOL];
@@ -83,7 +83,7 @@ const char* capture_ffmpeg_get_name(void)
 
 int capture_ffmpeg_get_version(void)
 {
-    return 20181119;
+    return 20210128;
 }
 
 #include <fcntl.h>
@@ -190,7 +190,9 @@ void* capture_ffmpeg_init(const JsonObject & config)
     DEBUG("spool index: " << devindex);
     capture_ffmpeg_t* st = & capture_ffmpeg_vals[devindex];
 
+    st->is_used = true;
     st->is_debug = config.getBoolean("debug", false);
+
     std::string capture_ffmpeg_device = config.getString("device");
     std::string capture_ffmpeg_format = config.getString("format");
 
@@ -288,6 +290,19 @@ void* capture_ffmpeg_init(const JsonObject & config)
 	    av_dict_set(& v4l2Params, "video_size", strsz.c_str(), 0);
 	    curParams = & v4l2Params;
 	}
+
+    }
+
+    if(config.hasKey("init:timeout"))
+    {
+	int timeout = config.getInteger("init:timeout", 0);
+	if(0 < timeout)
+	{
+	    std::string snum = String::number(timeout);
+	    DEBUG("params: " << "init:timeout = " << snum);
+	    av_dict_set(& v4l2Params, "timeout", snum.c_str(), 0);
+	    curParams = & v4l2Params;
+	}
     }
 
     err = avformat_open_input(& st->format_ctx, capture_ffmpeg_device.c_str(), pFormatInput, curParams);
@@ -295,8 +310,11 @@ void* capture_ffmpeg_init(const JsonObject & config)
     if(err < 0)
     {
     	ERROR("unable to open device: " << capture_ffmpeg_device << ", error: " << err);
+	st->is_used = false;
     	return NULL;
     }
+
+    DEBUG("open input: " << capture_ffmpeg_device << " success");
 
     // retrieve stream information
 #ifdef FFMPEG_OLD_API
@@ -307,6 +325,7 @@ void* capture_ffmpeg_init(const JsonObject & config)
     if(err < 0)
     {
     	ERROR("unable to find stream info" << ", error: " << err);
+	st->is_used = false;
     	return NULL;
     }
 
@@ -331,6 +350,7 @@ void* capture_ffmpeg_init(const JsonObject & config)
     if(NULL == av_stream)
     {
     	ERROR("unable to find video stream" << ", error: " << err);
+	st->is_used = false;
     	return NULL;
     }
 
@@ -348,6 +368,7 @@ void* capture_ffmpeg_init(const JsonObject & config)
     if(err < 0)
     {
     	ERROR("unable to open codec" << ", error: " << err);
+	st->is_used = false;
     	return NULL;
     }
 
@@ -357,7 +378,7 @@ void* capture_ffmpeg_init(const JsonObject & config)
     if(curParams) av_dict_free(curParams);
 #endif
 
-    st->is_used = true;
+    DEBUG("index " << st->is_used << " started...");
     return st;
 }
 

@@ -58,7 +58,7 @@ struct signal_dbus_signal_t
 };
 
 #ifndef DBUS_SIGNAL_SPOOL
-#define DBUS_SIGNAL_SPOOL 4
+#define DBUS_SIGNAL_SPOOL 16
 #endif
 
 signal_dbus_signal_t signal_dbus_signal_vals[DBUS_SIGNAL_SPOOL];
@@ -70,7 +70,7 @@ const char* signal_dbus_signal_get_name(void)
 
 int signal_dbus_signal_get_version(void)
 {
-    return 20180817;
+    return 20210128;
 }
 
 int signal_dbus_autostart(signal_dbus_signal_t* st)
@@ -140,6 +140,7 @@ void* signal_dbus_signal_init(const JsonObject & config)
     DEBUG("spool index: " << devindex);
     signal_dbus_signal_t* st = & signal_dbus_signal_vals[devindex];
 
+    st->is_used = true;
     st->is_debug = config.getBoolean("debug", false);
     st->system_signal = config.getString("signal");
     bool dbusIsSystem = config.getBoolean("dbus:system", false);
@@ -152,6 +153,7 @@ void* signal_dbus_signal_init(const JsonObject & config)
     st->dbus_conn = dbus_bus_get((dbusIsSystem ? DBUS_BUS_SYSTEM : DBUS_BUS_SESSION), &dbus_err);
     if(dbus_error_is_set(&dbus_err))
     {
+	st->is_used = false;
 	ERROR("dbus_bus_get: " << dbus_err.message);
 	dbus_error_free(&dbus_err);
         return NULL;
@@ -159,6 +161,7 @@ void* signal_dbus_signal_init(const JsonObject & config)
 
     if(NULL == st->dbus_conn)
     {
+	st->is_used = false;
 	ERROR("dbus_bus_get: " << "is null");
         return NULL;
     }
@@ -172,6 +175,7 @@ void* signal_dbus_signal_init(const JsonObject & config)
     int ret = dbus_bus_request_name(st->dbus_conn, st->dbus_name.c_str(), DBUS_NAME_FLAG_REPLACE_EXISTING , &dbus_err);
     if(dbus_error_is_set(&dbus_err))
     {
+	st->is_used = false;
 	ERROR("dbus_bus_request_name: " << dbus_err.message);
 	dbus_error_free(&dbus_err);
         return NULL;
@@ -179,6 +183,7 @@ void* signal_dbus_signal_init(const JsonObject & config)
 
     if(0 > ret)
     {
+	st->is_used = false;
 	ERROR("dbus_bus_request_name: " << ret);
         return NULL;
     }
@@ -194,6 +199,7 @@ void* signal_dbus_signal_init(const JsonObject & config)
     dbus_connection_flush(st->dbus_conn);
     if(dbus_error_is_set(&dbus_err))
     {
+	st->is_used = false;
 	ERROR("match error: " << dbus_err.message);
 	dbus_error_free(&dbus_err);
         return NULL;
@@ -215,7 +221,7 @@ void* signal_dbus_signal_init(const JsonObject & config)
 
     DEBUG("init complete");
 
-    st->is_used = true;
+    //st->is_used = true;
     return st;
 }
 

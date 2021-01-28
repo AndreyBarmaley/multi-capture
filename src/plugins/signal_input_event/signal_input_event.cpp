@@ -56,7 +56,7 @@ struct signal_input_event_t
 };
 
 #ifndef INPUT_EVENT_SPOOL
-#define INPUT_EVENT_SPOOL 4
+#define INPUT_EVENT_SPOOL 16
 #endif
 
 signal_input_event_t signal_input_event_vals[INPUT_EVENT_SPOOL];
@@ -68,7 +68,7 @@ const char* signal_input_event_get_name(void)
 
 int signal_input_event_get_version(void)
 {
-    return 20180817;
+    return 20210128;
 }
 
 void* signal_input_event_init(const JsonObject & config)
@@ -88,6 +88,7 @@ void* signal_input_event_init(const JsonObject & config)
     DEBUG("spool index: " << devindex);
     signal_input_event_t* st = & signal_input_event_vals[devindex];
 
+    st->is_used = true;
     st->is_debug = config.getBoolean("debug", false);
     st->signal = config.getString("signal");
     st->device = config.getString("device");
@@ -98,7 +99,6 @@ void* signal_input_event_init(const JsonObject & config)
  
     DEBUG("params: " << "signal = " << st->signal);
 
-    st->is_used = true;
     return st;
 }
 

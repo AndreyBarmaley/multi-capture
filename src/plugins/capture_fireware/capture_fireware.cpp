@@ -118,7 +118,7 @@ const char* capture_fireware_get_name(void)
 
 int capture_fireware_get_version(void)
 {
-    return 20180817;
+    return 20210128;
 }
 
 bool capture_fireware_select(void* ptr)
@@ -301,6 +301,7 @@ void* capture_fireware_init(const JsonObject & config)
     DEBUG("spool index: " << devindex);
     capture_fireware_t* st = & capture_fireware_vals[devindex];
 
+    st->is_used = true;
     st->is_debug = config.getBoolean("debug", false);
     std::string strguid = config.getString("guid");
 
@@ -322,6 +323,7 @@ void* capture_fireware_init(const JsonObject & config)
 
     if(! capture_fireware_select(st))
     {
+	st->is_used = false;
         ERROR("No AV/C devices found.");
 	return NULL;
     }
@@ -381,7 +383,7 @@ void* capture_fireware_init(const JsonObject & config)
 	VERBOSE("DV mode started");
     }
 
-    st->is_used = true;
+    //st->is_used = true;
 
     return st;
 }

@@ -32,7 +32,7 @@ MainScreen::MainScreen(const JsonObject & jo) : DisplayWindow(Color::Black), frs
 {
     colorBack = jo.getString("display:background");
 
-    frs = new FontRenderTTF(jo.getString("font:file"), jo.getInteger("font:size", 12), jo.getBoolean("font:blend", false));
+    frs = new FontRenderTTF(jo.getString("font:file"), jo.getInteger("font:size", 12), jo.getBoolean("font:blend", false) ? SWE::RenderBlended : SWE::RenderSolid);
     const JsonArray* ja = NULL;
 
     if(! frs->isValid())

@@ -48,7 +48,7 @@ struct capture_image_t
 };
 
 #ifndef CAPTURE_IMAGE_SPOOL
-#define CAPTURE_IMAGE_SPOOL 4
+#define CAPTURE_IMAGE_SPOOL 16
 #endif
 
 capture_image_t capture_image_vals[CAPTURE_IMAGE_SPOOL];
@@ -60,7 +60,7 @@ const char* capture_image_get_name(void)
 
 int capture_image_get_version(void)
 {
-    return 20180817;
+    return 20210128;
 }
 
 void* capture_image_init(const JsonObject & config)
@@ -80,6 +80,7 @@ void* capture_image_init(const JsonObject & config)
     DEBUG("spool index: " << devindex);
     capture_image_t* st = & capture_image_vals[devindex];
 
+    st->is_used = true;
     st->is_debug = config.getBoolean("debug", false);
     st->is_static = config.getBoolean("static", true);
     st->file = config.getString("file");
@@ -89,7 +90,6 @@ void* capture_image_init(const JsonObject & config)
     DEBUG("params: " << "file = " << st->file);
     DEBUG("params: " << "lock = " << st->lock);
 
-    st->is_used = true;
     return st;
 }
 
