@@ -105,7 +105,7 @@ int capture_image_frame_action(void* ptr)
     capture_image_t* st = static_cast<capture_image_t*>(ptr);
     if(st->is_debug) DEBUG("version: " << capture_image_get_version());
 
-    if(Systems::isFile(st->lock))
+    if(! st->lock.empty() && Systems::isFile(st->lock))
     {
 	ERROR("skip read, lock present: " << st->lock);
 	return 0;

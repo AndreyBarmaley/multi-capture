@@ -23,7 +23,6 @@
 #include <cstring>
 
 #include "../../settings.h"
-#include "../../videowindow.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -68,7 +67,7 @@ const char* signal_input_event_get_name(void)
 
 int signal_input_event_get_version(void)
 {
-    return 20210128;
+    return 20210130;
 }
 
 void* signal_input_event_init(const JsonObject & config)
@@ -109,29 +108,6 @@ void signal_input_event_quit(void* ptr)
     st->clear();
 }
 
-int signal_input_event_push_event(void* ptr)
-{
-    signal_input_event_t* st = static_cast<signal_input_event_t*>(ptr);
-    if(st->is_debug) DEBUG("version: " << signal_input_event_get_version());
-
-    // push event broadcast
-    SDL_Event event;
-    std::memset(&event, 0, sizeof(event));
-
-    event.type = SDL_USEREVENT;
-    event.user.code = ActionBackSignal;
-    event.user.data1 = NULL;
-    event.user.data2 = & st->signal;
-
-    if(0 > SDL_PushEvent(&event))
-    {
-        ERROR(SDL_GetError());
-        return -1;
-    }
-
-    return 0;
-}
-
 int signal_input_event_action(void* ptr)
 {
     signal_input_event_t* st = static_cast<signal_input_event_t*>(ptr);
@@ -159,10 +135,7 @@ int signal_input_event_action(void* ptr)
 	    if(type == st->type &&
 		code == st->code &&
 		(0 > st->value || st->value == value))
-	    {
-		if(0 > signal_input_event_push_event(ptr))
-		    return 0;
-	    }
+                DisplayScene::pushEvent(NULL, ActionBackSignal, & st->signal);
 
 	    sf.close();
 	    Tools::delay(st->delay);

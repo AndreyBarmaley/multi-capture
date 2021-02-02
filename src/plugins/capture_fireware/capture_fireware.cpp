@@ -118,7 +118,7 @@ const char* capture_fireware_get_name(void)
 
 int capture_fireware_get_version(void)
 {
-    return 20210128;
+    return 20210130;
 }
 
 bool capture_fireware_select(void* ptr)
@@ -380,10 +380,8 @@ void* capture_fireware_init(const JsonObject & config)
 
         st->dv_decoder->quality = DV_QUALITY_BEST;
         iec61883_dv_fb_start(st->iec61883_dv, st->channel);
-	VERBOSE("DV mode started");
+	VERBOSE("DV mode started, index: " << devindex);
     }
-
-    //st->is_used = true;
 
     return st;
 }

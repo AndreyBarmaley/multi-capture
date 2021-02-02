@@ -83,9 +83,16 @@ const char* capture_ffmpeg_get_name(void)
 
 int capture_ffmpeg_get_version(void)
 {
-    return 20210128;
+    return 20210130;
 }
 
+#if defined(__WIN32__)
+int capture_ffmpeg_v4l2_channel_input(const std::string & dev, const std::string & channel)
+{
+    return 0;
+}
+
+#else
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <linux/videodev2.h>
@@ -134,6 +141,7 @@ int capture_ffmpeg_v4l2_channel_input(const std::string & dev, const std::string
 
     return res;
 }
+#endif
 
 char* string_dup(const std::string & str)
 {   
@@ -225,9 +233,22 @@ void* capture_ffmpeg_init(const JsonObject & config)
     AVInputFormat *pFormatInput = av_find_input_format(capture_ffmpeg_format.c_str());
 
 #ifdef FFMPEG_OLD_API
+    char* v4l2_standard_dup = NULL;
+#else
+    AVDictionary** curParams = NULL;
+#endif
+
+    auto localFree = [=](){
+#ifdef FFMPEG_OLD_API
+        if(v4l2_standard_dup) free(v4l2_standard_dup);
+#else
+        if(curParams) av_dict_free(curParams);
+#endif
+    };
+
+#ifdef FFMPEG_OLD_API
     AVFormatParameters v4l2Params;
     AVFormatParameters* curParams = NULL;
-    char* v4l2_standard_dup = NULL;
 
     if(capture_ffmpeg_format == "video4linux2")
     {
@@ -261,7 +282,6 @@ void* capture_ffmpeg_init(const JsonObject & config)
     err = av_open_input_file(& st->format_ctx, capture_ffmpeg_device.c_str(), pFormatInput, 0, curParams);
 #else
     AVDictionary* v4l2Params = NULL;
-    AVDictionary** curParams = NULL;
 
     if(capture_ffmpeg_format == "video4linux2")
     {
@@ -311,6 +331,7 @@ void* capture_ffmpeg_init(const JsonObject & config)
     {
     	ERROR("unable to open device: " << capture_ffmpeg_device << ", error: " << err);
 	st->is_used = false;
+        localFree();
     	return NULL;
     }
 
@@ -326,6 +347,7 @@ void* capture_ffmpeg_init(const JsonObject & config)
     {
     	ERROR("unable to find stream info" << ", error: " << err);
 	st->is_used = false;
+        localFree();
     	return NULL;
     }
 
@@ -351,6 +373,7 @@ void* capture_ffmpeg_init(const JsonObject & config)
     {
     	ERROR("unable to find video stream" << ", error: " << err);
 	st->is_used = false;
+        localFree();
     	return NULL;
     }
 
@@ -369,16 +392,13 @@ void* capture_ffmpeg_init(const JsonObject & config)
     {
     	ERROR("unable to open codec" << ", error: " << err);
 	st->is_used = false;
+        localFree();
     	return NULL;
     }
 
-#ifdef FFMPEG_OLD_API
-    if(v4l2_standard_dup) free(v4l2_standard_dup);
-#else
-    if(curParams) av_dict_free(curParams);
-#endif
+    localFree();
 
-    DEBUG("index " << st->is_used << " started...");
+    DEBUG("index " << devindex << " started...");
     return st;
 }
 
@@ -388,11 +408,7 @@ void capture_ffmpeg_quit(void* ptr)
     if(st->is_debug) VERBOSE("version: " << capture_ffmpeg_get_version());
 
 #if LIBAVFORMAT_VERSION_MAJOR > 56
-    if(st->codec_ctx)
-    {
-       avcodec_free_context(& st->codec_ctx);
-       st->codec_ctx = NULL;
-    }
+    if(st->codec_ctx) avcodec_free_context(& st->codec_ctx);
 #endif
 #ifdef FFMPEG_OLD_API
     if(st->codec_ctx) avcodec_close(st->codec_ctx);
@@ -549,7 +565,7 @@ int capture_ffmpeg_frame_action(void* ptr)
     av_free(pFrameRGB);
     av_free(pFrame);
 
-    return 0;
+    return frameFinished ? 0 : -1;
 }
 
 const Surface & capture_ffmpeg_get_surface(void* ptr)

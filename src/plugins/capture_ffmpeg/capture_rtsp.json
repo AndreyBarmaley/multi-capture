@@ -1,6 +1,5 @@
 {
     "debug":	true,
-    "thread":	true,
     "device":	"rtsp://kkm-videocam:554/live1.sdp",
     "format":	"rtsp",
     "init:timeout": 5000,

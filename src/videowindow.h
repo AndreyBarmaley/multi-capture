@@ -23,10 +23,10 @@
 #ifndef _CNA_VIDEO_WINDOW_
 #define _CNA_VIDEO_WINDOW_
 
+#include <memory>
+
 #include "settings.h"
 #include "plugins.h"
-
-enum { ActionNone = 0, ActionRenderWindow = 1, ActionBackStore = 2, ActionBackSignal = 3, ActionStoreComplete = 4 };
 
 struct WindowParams
 {
@@ -43,15 +43,15 @@ struct WindowParams
 
 class VideoWindow : public Window, protected WindowParams
 {
-    CapturePlugin*	capturePlugin;
-    StoragePlugin*	storagePlugin;
+    std::unique_ptr<CapturePlugin> capturePlugin;
+    std::unique_ptr<StoragePlugin> storagePlugin;
 
     Surface		back;
+    TickTrigger		ttStorage, ttCapture;
 
     bool		capturePluginParamScale;
     int			capturePluginParamTick;
-    int			capturePluginParamTickSave;
-    int			signalPluginParamTickSave;
+    int			signalPluginParamTick;
 
 protected:
     void		tickEvent(u32 ms) override;
@@ -63,7 +63,6 @@ protected:
 
 public:
     VideoWindow(const WindowParams &, Window & parent);
-    ~VideoWindow();
 
     const std::string &	name(void) const { return labelName; }
     bool		isName(const std::string & str) const { return 0 == labelName.compare(str); }

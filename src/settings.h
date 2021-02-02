@@ -28,6 +28,9 @@
 #include "libswe.h"
 using namespace SWE;
 
+#define VERSION 20210201
+enum { ActionNone = 11110, ActionFrameComplete = 11111, ActionFrameError = 11112, ActionBackStore = 11113, ActionBackSignal = 11114, ActionStoreComplete = 11115 };
+ 
 namespace Settings
 {
     std::string		programName(void);

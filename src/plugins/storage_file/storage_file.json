@@ -1,6 +1,5 @@
 {
     "debug":  true,
-    "thread": true,
     "overwrite": false,
     "format:description": "strftime",
     "format": "/var/tmp/%Y%m%d_%H%M%S.png"

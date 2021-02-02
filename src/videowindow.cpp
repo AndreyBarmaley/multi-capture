@@ -44,8 +44,7 @@ WindowParams::WindowParams(const JsonObject & jo)
 
 /* VideoWindow */
 VideoWindow::VideoWindow(const WindowParams & params, Window & parent) : Window(params.position, params.position, & parent),
-    WindowParams(params), capturePlugin(NULL), storagePlugin(NULL),
-    capturePluginParamScale(false), capturePluginParamTick(0), capturePluginParamTickSave(0), signalPluginParamTickSave(0)
+    WindowParams(params), capturePluginParamScale(false), capturePluginParamTick(0), signalPluginParamTick(0)
 {
     if(labelName.empty())
 	labelName = String::hex(Window::id());
@@ -60,10 +59,8 @@ VideoWindow::VideoWindow(const WindowParams & params, Window & parent) : Window(
 	
 	if(capture.config.isValid())
 	{
-	    capture.config.addString("window:parent", String::pointer(this));
 	    capture.config.addArray("window:size", JsonPack::size( size() ));
-
-	    capturePlugin = new CapturePlugin(capture);
+	    capturePlugin.reset(new CapturePlugin(capture, *this));
 
 	    capturePluginParamScale = capture.config.getBoolean("scale");
 	    capturePluginParamTick = capture.config.getInteger("tick");
@@ -89,12 +86,13 @@ VideoWindow::VideoWindow(const WindowParams & params, Window & parent) : Window(
 	
 	    if(storage.config.isValid())
 	    {
-		storage.config.addString("window:parent", String::pointer(this));
-		storagePlugin = new StoragePlugin(storage);
-	    }
-	    else
-	    {
-		ERROR("json config invalid");
+		storagePlugin.reset(new StoragePlugin(storage, *this));
+
+		std::string signal = storagePlugin->findSignal("tick:");
+		if(signal.size())
+		{
+		    signalPluginParamTick = String::toInt(signal.substr(5, signal.size() - 5));
+		}
 	    }
 	}
 	else
@@ -105,12 +103,6 @@ VideoWindow::VideoWindow(const WindowParams & params, Window & parent) : Window(
 
     renderWindow();
     setVisible(true);
-}
-
-VideoWindow::~VideoWindow()
-{
-    if(capturePlugin) delete capturePlugin;
-    if(storagePlugin) delete storagePlugin;
 }
 
 void VideoWindow::renderWindow(void)
@@ -124,65 +116,42 @@ void VideoWindow::renderWindow(void)
 
 void VideoWindow::tickEvent(u32 ms)
 {
-    if(capturePlugin && capturePlugin->isInitComplete())
+    if(capturePlugin)
     {
-	if(capturePlugin->isInit())
+	if(0 <= capturePluginParamTick &&
+	    ttCapture.check(ms, capturePluginParamTick))
 	{
-	    if(0 == capturePluginParamTickSave || (0 < capturePluginParamTick && capturePluginParamTickSave + capturePluginParamTick < ms))
-	    {
-		if(0 == capturePlugin->frameAction())
-		    pushEventAction(ActionRenderWindow, this, NULL);
-
-		// && capturePlugin->isInitComplete()
-		capturePluginParamTickSave = ms;
-	    }
-	}
-	else
-	{
-    	    // 500 ms
-	    if(0 == (ms % 500)) capturePlugin->reInit();
+	    capturePlugin->frameAction();
 	}
 
 	// internal signal: tick:timeout
-	if(storagePlugin && storagePlugin->isInit())
+	if(storagePlugin && capturePlugin->isInitComplete() && storagePlugin->isInitComplete())
 	{
-	    std::string signal = storagePlugin->findSignal("tick:");
-
-	    if(signal.size())
+	    if(0 <= signalPluginParamTick &&
+                ttStorage.check(ms, signalPluginParamTick))
 	    {
-		int tick = String::toInt(signal.substr(5, signal.size() - 5));
-
-		if(0 < tick && signalPluginParamTickSave + tick < ms)
-		{
-		    DEBUG("receive signal: " << signal);
-		    storagePlugin->setSurface(back);
-		    pushEventAction(ActionBackStore, this, NULL);
-		    signalPluginParamTickSave = ms;
-		}
+		storagePlugin->setSurface(back);
+		pushEventAction(ActionBackStore, this, NULL);
 	    }
-	}
-	else
-	if(storagePlugin && ! storagePlugin->isInit())
-	{
-    	    // 500 ms
-    	    if(0 == (ms % 500)) storagePlugin->reInit();
 	}
     }
 }
 
 bool VideoWindow::userEvent(int act, void* data)
 {
-    if(! capturePlugin || !capturePlugin->isInitComplete())
-	return false;
-
     switch(act)
     {
-	case ActionRenderWindow:
+	case ActionFrameComplete:
+            back = capturePlugin->getSurface();
 	    renderWindow();
 	    return true;
 
+	case ActionFrameError:
+	    capturePlugin.reset(new CapturePlugin(capture, *this));
+            return true;
+
 	case ActionBackSignal:
-	    if(data && storagePlugin)
+	    if(data && storagePlugin && capturePlugin->isInitComplete())
 	    {
 		const std::string* str = static_cast<const std::string*>(data);
 		std::string signal = storagePlugin->findSignal(*str);
@@ -228,21 +197,6 @@ void VideoWindow::renderSurface(void)
 {
     if(capturePlugin)
     {
-	if(0 == capturePluginParamTickSave || ! back.isValid() ||
-	    Tools::ticks() - capturePluginParamTickSave >= capturePluginParamTick)
-	{
-	    u32 tick1 = Tools::ticks();
-	    back = capturePlugin->getSurface();
-	    u32 delay = Tools::ticks() - tick1;
-
-	    if(0 < capturePluginParamTick && delay > capturePluginParamTick)
-		DEBUG(labelName << ": sloow process, maybe need increase tick");
-	}
-	else
-	{
-	    // DEBUG(labelName << ": skip render, because tick present, wait complete it");
-	}
-
 	if(back.isValid())
 	{
 	    Rect rt1 = back.rect();

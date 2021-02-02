@@ -23,7 +23,6 @@
 #include <cstring>
 
 #include "../../settings.h"
-#include "../../videowindow.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -52,7 +51,7 @@ const char* signal_test_tick_get_name(void)
 
 int signal_test_tick_get_version(void)
 {
-    return 20180817;
+    return 20210130;
 }
 
 void* signal_test_tick_init(const JsonObject & config)
@@ -76,37 +75,12 @@ void signal_test_tick_quit(void* ptr)
     st->clear();
 }
 
-int signal_test_tick_push_event(void* ptr)
-{
-    signal_test_tick_t* st = static_cast<signal_test_tick_t*>(ptr);
-    if(st->is_debug) DEBUG("version: " << signal_test_tick_get_version());
-
-    // push event broadcast
-    SDL_Event event;
-    std::memset(&event, 0, sizeof(event));
-
-    event.type = SDL_USEREVENT;
-    event.user.code = ActionBackSignal;
-    event.user.data1 = NULL;
-    event.user.data2 = & st->signal;
-
-    if(0 > SDL_PushEvent(&event))
-    {
-        ERROR(SDL_GetError());
-        return -1;
-    }
-
-    return 0;
-}
-
 int signal_test_tick_action(void* ptr)
 {
     signal_test_tick_t* st = static_cast<signal_test_tick_t*>(ptr);
     if(st->is_debug) DEBUG("version: " << signal_test_tick_get_version());
 
-    if(0 > signal_test_tick_push_event(ptr))
-	return -1;
-
+    DisplayScene::pushEvent(NULL, ActionBackSignal, & st->signal);
     return 0;
 }
 

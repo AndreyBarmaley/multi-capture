@@ -1,6 +1,6 @@
 {
     "debug":	true,
-    "thread":	true,
+    "thread":   true,
     "signal":	"signal_dbus_test1",
     "dbus:system":    true,
     "dbus:name":    "org.test.dbus",

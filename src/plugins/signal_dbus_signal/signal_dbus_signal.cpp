@@ -23,8 +23,6 @@
 #include <cstring>
 
 #include "../../settings.h"
-#include "../../videowindow.h"
-
 #include "dbus/dbus.h"
 
 #ifdef __cplusplus
@@ -70,7 +68,7 @@ const char* signal_dbus_signal_get_name(void)
 
 int signal_dbus_signal_get_version(void)
 {
-    return 20210128;
+    return 20210130;
 }
 
 int signal_dbus_autostart(signal_dbus_signal_t* st)
@@ -232,29 +230,6 @@ void signal_dbus_signal_quit(void* ptr)
     st->clear();
 }
 
-int signal_dbus_signal_push_event(void* ptr)
-{
-    signal_dbus_signal_t* st = static_cast<signal_dbus_signal_t*>(ptr);
-    if(st->is_debug) DEBUG("version: " << signal_dbus_signal_get_version());
-
-    // push event broadcast
-    SDL_Event event;
-    std::memset(&event, 0, sizeof(event));
-
-    event.type = SDL_USEREVENT;
-    event.user.code = ActionBackSignal;
-    event.user.data1 = NULL;
-    event.user.data2 = & st->system_signal;
-
-    if(0 > SDL_PushEvent(&event))
-    {
-	ERROR(SDL_GetError());
-        return -1;
-    }
-
-    return 0;
-}
-
 int signal_dbus_signal_action(void* ptr)
 {
     signal_dbus_signal_t* st = static_cast<signal_dbus_signal_t*>(ptr);
@@ -309,8 +284,7 @@ int signal_dbus_signal_action(void* ptr)
 
 	if(sendSignal)
 	{
-	    if(0 > signal_dbus_signal_push_event(ptr))
-		return -1;
+            DisplayScene::pushEvent(NULL, ActionBackSignal, & st->dbus_signal);
 	}
     }
 

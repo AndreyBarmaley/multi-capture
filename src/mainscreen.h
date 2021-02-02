@@ -23,7 +23,12 @@
 #ifndef _CNA_MAIN_SCREEN_
 #define _CNA_MAIN_SCREEN_
 
-#include "settings.h"
+#include <list>
+#include <memory>
+
+#include "plugins.h"
+#include "videowindow.h"
+#include "gallerywindow.h"
 
 class SignalPlugin;
 class VideoWindow;
@@ -32,10 +37,12 @@ class GalleryWindow;
 class MainScreen : public DisplayWindow
 {
     Color                    colorBack;
-    const FontRender*        frs;
-    std::list<VideoWindow*>  windows;
-    std::list<SignalPlugin*> signals;
-    GalleryWindow*           gallery;
+
+    std::list< std::unique_ptr<VideoWindow> > windows;
+    std::list< std::unique_ptr<SignalPlugin> > signals;
+
+    std::unique_ptr<FontRender> frs;
+    std::unique_ptr<GalleryWindow> gallery;
 
     bool		showWindowPositionsDialog(const Window*, Rect &);
 
@@ -45,7 +52,6 @@ protected:
 
 public:
     MainScreen(const JsonObject &);
-    ~MainScreen();
 
     void		renderWindow(void) override;
     const FontRender &  fontRender(void) const;

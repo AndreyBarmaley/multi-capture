@@ -1,6 +1,6 @@
 {
     "debug":	true,
-    "thread":	true,
+    "thread":   true,
     "device":	"/dev/input/event15",
     "delay":	100,
     "event:type": 1,

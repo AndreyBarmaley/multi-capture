@@ -21,7 +21,6 @@
  ***************************************************************************/
 
 #include "../../settings.h"
-#include "../../videowindow.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -35,15 +34,13 @@ struct storage_script_t
     std::string exec;
     std::string image;
     Surface	surface;
-    Window*	win;
 
-    storage_script_t() : is_used(false), is_debug(false), win(NULL) {}
+    storage_script_t() : is_used(false), is_debug(false) {}
 
     void clear(void)
     {
         is_used = false;
         is_debug = false;
-	win = NULL;
         label.clear();
         exec.clear();
         image.clear();
@@ -64,7 +61,7 @@ const char* storage_script_get_name(void)
 
 int storage_script_get_version(void)
 {
-    return 20210128;
+    return 20210130;
 }
 
 void* storage_script_init(const JsonObject & config)
@@ -87,14 +84,6 @@ void* storage_script_init(const JsonObject & config)
     st->is_debug = config.getBoolean("debug", false);
     st->exec = config.getString("exec");
     st->image = config.getString("image");
-
-    std::string parent = config.getString("window:parent");
-    if(parent.size())
-    {
-        DEBUG("parent found: " << parent);
-        std::uintptr_t ptr = String::toLong(parent);
-        st->win = reinterpret_cast<Window*>(ptr);
-    }
 
     DEBUG("params: " << "exec = " << st->exec);
     DEBUG("params: " << "image = " << st->image);
@@ -133,7 +122,6 @@ int storage_script_store_action(void* ptr)
 
     	    system(cmd.c_str());
 	    st->label = String::strftime("%Y/%m/%d %H:%M:%S");
-	    if(st->win) st->win->pushEventAction(ActionStoreComplete, st->win, NULL);
 
     	    return 0;
 	}

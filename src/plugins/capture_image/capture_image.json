@@ -1,6 +1,5 @@
 {
     "debug":	false,
-    "thread":	true,
     "file":	"/opt/svn/my-projects/SDL/tests/engine/back.png",
     "tick":	3000,
     "static":	false,

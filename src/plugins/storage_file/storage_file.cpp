@@ -21,7 +21,6 @@
  ***************************************************************************/
 
 #include "../../settings.h"
-#include "../../videowindow.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -35,16 +34,14 @@ struct storage_file_t
     std::string label;
     std::string format;
     Surface	surface;
-    Window*	win;
 
-    storage_file_t() : is_used(false), is_debug(false), is_overwrite(false), win(NULL) {}
+    storage_file_t() : is_used(false), is_debug(false), is_overwrite(false) {}
 
     void clear(void)
     {
         is_used = false;
         is_debug = false;
         is_overwrite = false;
-	win = NULL;
         label.clear();
         format.clear();
 	surface.reset();
@@ -84,21 +81,13 @@ void* storage_file_init(const JsonObject & config)
     DEBUG("spool index: " << devindex);
     storage_file_t* st = & storage_file_vals[devindex];
 
+    st->is_used = true;
     st->is_debug = config.getBoolean("debug", false);
     st->is_overwrite = config.getBoolean("overwrite", false);
     st->format = config.getString("format");
 
-    std::string parent = config.getString("window:parent");
-    if(parent.size())
-    {
-	DEBUG("parent found: " << parent);
-	std::uintptr_t ptr = String::toLong(parent);
-	st->win = reinterpret_cast<Window*>(ptr);
-    }
-
     DEBUG("params: " << "format = " << st->format);
 
-    st->is_used = true;
     return st;
 }
 
@@ -133,7 +122,6 @@ int storage_file_store_action(void* ptr)
 	    DEBUG("save: " << filename);
 	    st->surface.save(filename);
 	    st->label = filename;
-	    if(st->win) st->win->pushEventAction(ActionStoreComplete, st->win, NULL);
 	}
 	else
 	{

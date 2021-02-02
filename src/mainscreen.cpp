@@ -28,21 +28,18 @@
 #include "videowindow.h"
 #include "mainscreen.h"
 
-MainScreen::MainScreen(const JsonObject & jo) : DisplayWindow(Color::Black), frs(NULL), gallery(NULL)
+MainScreen::MainScreen(const JsonObject & jo) : DisplayWindow(Color::Black)
 {
     colorBack = jo.getString("display:background");
+    auto tmp = new FontRenderTTF(jo.getString("font:file"), jo.getInteger("font:size", 12), jo.getBoolean("font:blend", false) ? SWE::RenderBlended : SWE::RenderSolid);
 
-    frs = new FontRenderTTF(jo.getString("font:file"), jo.getInteger("font:size", 12), jo.getBoolean("font:blend", false) ? SWE::RenderBlended : SWE::RenderSolid);
-    const JsonArray* ja = NULL;
-
-    if(! frs->isValid())
-    {
-	delete frs;
-	frs = & systemFont();
-    }
+    if(tmp->isValid())
+        frs.reset(tmp);
+    else
+	delete tmp;
 
     // load windows
-    ja = jo.getArray("windows");
+    const JsonArray* ja = jo.getArray("windows");
     if(ja)
     {
 	for(int index = 0; index < ja->count(); ++index)
@@ -51,8 +48,7 @@ MainScreen::MainScreen(const JsonObject & jo) : DisplayWindow(Color::Black), frs
 	    if(jo2)
 	    {
 		bool skip = jo2->getBoolean("window:skip", false);
-		if(! skip)
-		    windows.push_back(new VideoWindow(WindowParams(*jo2), *this));
+		if(! skip) windows.emplace_back(new VideoWindow(WindowParams(*jo2), *this));
 	    }
 	}
     }
@@ -71,10 +67,7 @@ MainScreen::MainScreen(const JsonObject & jo) : DisplayWindow(Color::Black), frs
 
     		if(params.config.isValid())
     		{
-		    SignalPlugin* signal = new SignalPlugin(params);
-		    if(signal->isThread()) signal->signalAction();
-
-		    signals.push_back(signal);
+		    signals.emplace_back(new SignalPlugin(params, *this));
 		}
 		else
 		{
@@ -89,30 +82,15 @@ MainScreen::MainScreen(const JsonObject & jo) : DisplayWindow(Color::Black), frs
 	const JsonObject* jo2 = jo.getObject("gallery");
 	Rect pos = JsonUnpack::rect(*jo2, "position");
 	Color back = jo2->getString("background");
-	gallery = new GalleryWindow(pos.toPoint(), pos.toSize(), back, *this);
+	gallery.reset(new GalleryWindow(pos.toPoint(), pos.toSize(), back, *this));
     }
 
     setVisible(true);
 }
 
-MainScreen::~MainScreen()
-{
-    if(gallery)
-	delete gallery;
-
-    if(frs != & systemFont())
-	delete frs;
-
-    for(auto it = signals.begin(); it != signals.end(); ++it)
-	delete *it;
-
-    for(auto it = windows.begin(); it != windows.end(); ++it)
-	delete *it;
-}
-
 const FontRender & MainScreen::fontRender(void) const
 {
-    return frs ? *frs : systemFont();
+    return frs ? *frs : static_cast<const FontRender &>(systemFont());
 }
 
 void MainScreen::renderWindow(void)
@@ -136,22 +114,22 @@ bool MainScreen::keyPressEvent(const KeySym & key)
     if(key.keycode() == Key::F4)
     {
 	UnicodeList list;
-	for(auto it = windows.begin(); it != windows.end(); ++it)
-	    list.emplace_back((*it)->name());
+	for(auto & win : windows)
+	    list.emplace_back(win->name());
 
         TermGUI::ListBox box("Edit Window Params", list, 4, fontRender(), this);
 
 
         if(box.exec())
 	{
-	    auto it = std::find_if(windows.begin(), windows.end(), [&](auto & win){ return win->isName(box.result()); });
-	    if(it != windows.end())
+	    auto ptr = std::find_if(windows.begin(), windows.end(), [&](auto & win){ return win->isName(box.result()); });
+	    if(ptr != windows.end())
 	    {
 		Rect newPosition;
-		if(showWindowPositionsDialog(*it, newPosition))
+		if(showWindowPositionsDialog(ptr->get(), newPosition))
 		{
-		    (*it)->setSize(newPosition);
-		    (*it)->setPosition(newPosition);
+		    (*ptr)->setSize(newPosition);
+		    (*ptr)->setPosition(newPosition);
 		    DEBUG("set window position: " << newPosition.toString());
 		    renderWindow();
 		}
@@ -215,17 +193,10 @@ bool MainScreen::showWindowPositionsDialog(const Window* win, Rect & res)
 
 void MainScreen::tickEvent(u32 ms)
 {
-    for(auto it = signals.begin(); it != signals.end(); ++it)
+    for(auto & sig : signals)
     {
-	if((*it)->isInit())
-	{
-	    if((*it)->isTick(ms)) (*it)->signalAction();
-	}
-	else
-	{
-	    // 500 ms
-	    if(0 == (ms % 500)) (*it)->reInit();
-	}
+	if(sig->isInitComplete() && sig->isTick(ms))
+	    sig->signalAction();
     }
 }
 

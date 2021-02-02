@@ -20,7 +20,6 @@
 			    "name":	"capture_image",
 			    "config":	{
 					    "debug":    false,
-					    "thread":   true,
 					    "file":     "/var/tmp/back.png",
 					    "tick":     3000,
 					    "static":   false,
@@ -38,7 +37,6 @@
 			    "name":	"capture_image",
 			    "config":	{
 					    "debug":    false,
-					    "thread":   false,
 					    "file":     "/var/tmp/tmp462501.jpg",
 					    "tick":     0,
 					    "static":   true,
@@ -56,7 +54,6 @@
 			    "name":	"capture_ffmpeg",
 			    "config":	{
 					    "debug":    false,
-					    "thread":   true,
 					    "device":   "/dev/video0",
 					    "format":   "video4linux2",
 					    "tick":     30,
@@ -67,7 +64,6 @@
 			    "name":	"storage_file",
 			    "config":	{
 					    "debug":  false,
-					    "thread": true,
 					    "format:description": "strftime",
 					    "format": "/var/tmp/input3/%Y%m%d_%H%M%S.png",
 					    "signals":	[ "mouse:click" ]
@@ -84,11 +80,10 @@
 			    "name":	"capture_ffmpeg",
 			    "config":	{
 					    "debug":    false,
-					    "thread":   true,
 					    "device":   "rtsp://videocam:554/live1.sdp",
 					    "format":   "rtsp",
 					    "tick":     30,
-					    "init:timeout": 5000,
+					    "init:timeout": 500000,
 					    "scale":    true
 					}
 			},
@@ -96,7 +91,6 @@
 			    "name":	"storage_file",
 			    "config":	{
 					    "debug":  true,
-					    "thread": true,
 					    "format:description": "strftime",
 					    "format": "/var/tmp/input4/%Y%m%d_%H%M%S.png",
 					    "signals":	[ "mouse:click" ]

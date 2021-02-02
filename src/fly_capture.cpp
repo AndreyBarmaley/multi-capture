@@ -42,6 +42,8 @@ bool translationInit(void)
 
 int main(int argc, char **argv)
 {
+    LogWrapper::init("fly_capture", argv[0]);
+
 #ifndef ANDROID
     try
 #endif

@@ -23,12 +23,17 @@
 #ifndef _CNA_PLUGINS_
 #define _CNA_PLUGINS_
 
-#ifndef WIN32
-#include <dlfcn.h>
-#else
+#if defined(__WIN32__)
 #include <windows.h>
+#undef ERROR
+#undef DELETE
+#undef MessageBox
+#define ERROR(x)   { PRETTY("[ERROR]", x); }
+#else
+#include <dlfcn.h>
 #endif
 
+#include <atomic>
 #include "settings.h"
 
 enum { PluginReturnTrue = 0, PluginReturnFalse = -1, PluginReturnClose = -2 };
@@ -56,57 +61,57 @@ class BasePlugin : protected PluginParams
 {
 protected:
     void*		lib;
-    mutable void*	data;
+    void*	        data;
+    TickTrigger		tt;
 
     const char*		(*fun_get_name) (void);
     int			(*fun_get_version) (void);
     void*		(*fun_init) (const JsonObject &);
     void		(*fun_quit) (void*);
 
-    bool loadFunctions(void);
-    void quit(void) const;
+    std::atomic<bool>	threadInitialize;
+    std::atomic<bool>	threadAction;
+    std::atomic<bool>	threadExit;
+
+    Window*             parent;
+    SDL_Thread*	        thread;
+
+    bool                loadFunctions(void);
 
 public:
-    BasePlugin(const PluginParams &);
+    BasePlugin(const PluginParams &, Window &);
     virtual ~BasePlugin();
 
-    const char* pluginName(void) const;
-    int pluginVersion(void) const;
+    const char*         pluginName(void) const;
+    int                 pluginVersion(void) const;
 
-    bool isValid(void) const { return lib; }
-
-    bool isInit(void) const { return data; }
-    void reInit(void);
+    bool                isValid(void) const { return lib; }
+    bool		isInitComplete(void) const { return threadInitialize; }
 };
 
 class CapturePlugin : public BasePlugin
 {
-    bool		isthread;
-    mutable SDL_Thread*	thread;
     Surface		blue;
-    bool		initComplete;
 
 protected:
     int			(*fun_frame_action) (void*);
     const Surface &	(*fun_get_surface) (void*);
 
-    bool loadFunctions(void);
-    void generateBlueScreen(const std::string &);
-    static int initializeBackground(void*);
+    bool                loadFunctions(void);
+    Surface             generateBlueScreen(const std::string &) const;
+
+    static int          runThreadInitialize(void*);
+    static int          runThreadAction(void*);
 
 public:
-    CapturePlugin(const PluginParams &);
-    ~CapturePlugin();
+    CapturePlugin(const PluginParams &, Window &);
 
     int			frameAction(void);
-    const Surface &	getSurface(void) const;
-    bool		isInitComplete(void) const { return initComplete; }
+    const Surface &	getSurface(void);
 };
 
 class StoragePlugin : public BasePlugin
 {
-    bool		isthread;
-    mutable SDL_Thread*	thread;
     StringList		signals;
 
 protected:
@@ -117,22 +122,23 @@ protected:
 
     bool loadFunctions(void);
 
+    static int          runThreadInitialize(void*);
+    static int          runThreadAction(void*);
+
 public:
-    StoragePlugin(const PluginParams &);
-    ~StoragePlugin();
+    StoragePlugin(const PluginParams &, Window &);
 
     int			storeAction(void);
     int			setSurface(const Surface &);
+
     std::string		findSignal(const std::string &) const;
-    SurfaceLabel	getSurfaceLabel(void) const;
+    SurfaceLabel	getSurfaceLabel(void);
 };
 
 class SignalPlugin : public BasePlugin
 {
-    bool		isthread;
-    mutable SDL_Thread*	thread;
     int			tickval;
-    mutable int		ticktmp;
+    bool                isthread;
 
 protected:
     int			(*fun_action) (void*);
@@ -140,12 +146,9 @@ protected:
     bool loadFunctions(void);
 
 public:
-    SignalPlugin(const PluginParams &);
-    ~SignalPlugin();
+    SignalPlugin(const PluginParams &, Window &);
 
-    bool		isThread(void) const { return  isthread; }
     bool		isTick(u32 ms) const;
-
     int			signalAction(void);
 };
 
