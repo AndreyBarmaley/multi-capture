@@ -40,6 +40,11 @@ WindowParams::WindowParams(const JsonObject & jo)
 
     jo2 = jo.getObject("storage");
     if(jo2) storage = PluginParams(*jo2);
+
+    if(capture.file.empty())
+    {
+	capture.file = Systems::concatePath(".", std::string(capture.name).append(Systems::suffixLib()));
+    }
 }
 
 /* VideoWindow */
@@ -74,7 +79,7 @@ VideoWindow::VideoWindow(const WindowParams & params, Window & parent) : Window(
     }
     else
     {
-	ERROR("capture plugin not found: " << capture.file);
+	ERROR("capture plugin not found: " << capture.name << ", file: " << capture.file);
     }
 
     // init storage plugin
@@ -97,7 +102,7 @@ VideoWindow::VideoWindow(const WindowParams & params, Window & parent) : Window(
 	}
 	else
 	{
-	    ERROR("storage plugin not found: " << storage.file);
+	    ERROR("storage plugin not found: " << capture.name << ", file: " << capture.file);
 	}
     }
 
