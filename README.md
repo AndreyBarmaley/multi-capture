@@ -1,5 +1,5 @@
 # fly-capture
-multi-window system for capturing video from multiple resources
+Multi-window system for capturing video from multiple resources
 
 Each video source is described by its own section in the configuration file.  
 You can also set a signal plugin and an storage action for each video source.  
