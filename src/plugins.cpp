@@ -332,7 +332,7 @@ const Surface & CapturePlugin::getSurface(void)
 StoragePlugin::StoragePlugin(const PluginParams & params, Window & win) : BasePlugin(params, win),
     fun_store_action(NULL), fun_set_surface(NULL)
 {
-    signals = params.config.getStringList("signals");
+    signals = params.config.getStdList<std::string>("signals");
     std::transform(signals.begin(), signals.end(), signals.begin(), String::toLower);
 
     if(loadFunctions())

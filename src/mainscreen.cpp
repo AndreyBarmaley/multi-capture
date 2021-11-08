@@ -42,7 +42,7 @@ MainScreen::MainScreen(const JsonObject & jo) : DisplayWindow(Color::Black)
     const JsonArray* ja = jo.getArray("windows");
     if(ja)
     {
-	for(int index = 0; index < ja->count(); ++index)
+	for(int index = 0; index < ja->size(); ++index)
 	{
 	    const JsonObject* jo2 = ja->getObject(index);
 	    if(jo2)
@@ -57,7 +57,7 @@ MainScreen::MainScreen(const JsonObject & jo) : DisplayWindow(Color::Black)
     ja = jo.getArray("signals");
     if(ja)
     {
-	for(int index = 0; index < ja->count(); ++index)
+	for(int index = 0; index < ja->size(); ++index)
 	{
 	    const JsonObject* jo2 = ja->getObject(index);
 	    if(jo2)

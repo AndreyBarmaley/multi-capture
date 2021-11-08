@@ -2,6 +2,9 @@ cmake_minimum_required(VERSION 3.14)
 
 project(FlyCapture VERSION 20210201.1)
 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED True)
+
 set(SWE_DLOPEN ON CACHE BOOL "enable load shared libs" FORCE)
 set(SWE_WITH_JSON ON CACHE BOOL "enable json" FORCE)
 set(SWE_WITH_LUA OFF CACHE BOOL "disable lua" FORCE)
