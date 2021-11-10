@@ -59,7 +59,7 @@ const char* capture_script_get_name(void)
 
 int capture_script_get_version(void)
 {
-    return 20210130;
+    return 20211121;
 }
 
 void* capture_script_init(const JsonObject & config)

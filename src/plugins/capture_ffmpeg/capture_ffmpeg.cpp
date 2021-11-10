@@ -83,7 +83,7 @@ const char* capture_ffmpeg_get_name(void)
 
 int capture_ffmpeg_get_version(void)
 {
-    return 20210130;
+    return 20211121;
 }
 
 #if defined(__WIN32__)
@@ -465,7 +465,6 @@ int avcodec_decode_video22(AVCodecContext* avctx, AVFrame* frame, int* got_frame
 int capture_ffmpeg_frame_action(void* ptr)
 {
     capture_ffmpeg_t* st = static_cast<capture_ffmpeg_t*>(ptr);
-
     if(st->is_debug) DEBUG("version: " << capture_ffmpeg_get_version());
 
     if(! st->format_ctx || ! st->codec_ctx)

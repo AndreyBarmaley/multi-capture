@@ -39,8 +39,7 @@ MainScreen::MainScreen(const JsonObject & jo) : DisplayWindow(Color::Black)
 	delete tmp;
 
     // load windows
-    const JsonArray* ja = jo.getArray("windows");
-    if(ja)
+    if(const JsonArray* ja = jo.getArray("windows"))
     {
 	for(int index = 0; index < ja->size(); ++index)
 	{
@@ -54,8 +53,7 @@ MainScreen::MainScreen(const JsonObject & jo) : DisplayWindow(Color::Black)
     }
 
     // load signals
-    ja = jo.getArray("signals");
-    if(ja)
+    if(const JsonArray* ja = jo.getArray("signals"))
     {
 	for(int index = 0; index < ja->size(); ++index)
 	{
@@ -193,11 +191,6 @@ bool MainScreen::showWindowPositionsDialog(const Window* win, Rect & res)
 
 void MainScreen::tickEvent(u32 ms)
 {
-    for(auto & sig : signals)
-    {
-	if(sig->isInitComplete() && sig->isTick(ms))
-	    sig->signalAction();
-    }
 }
 
 void MainScreen::addImageGallery(const Surface & sf, const std::string & label)

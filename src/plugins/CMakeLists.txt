@@ -8,7 +8,6 @@ add_subdirectory(capture_script)
 add_subdirectory(storage_file)
 add_subdirectory(storage_script)
 add_subdirectory(signal_test_thread)
-add_subdirectory(signal_test_tick)
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
     add_subdirectory(capture_fireware)

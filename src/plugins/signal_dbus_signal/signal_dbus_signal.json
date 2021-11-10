@@ -1,11 +1,11 @@
 {
-    "debug":	true,
-    "thread":   true,
-    "signal":	"signal_dbus_test1",
+    "debug":	      true,
+    "delay":          100,
+    "signal":	      "signal_dbus_test1",
     "dbus:system":    true,
-    "dbus:name":    "org.test.dbus",
+    "dbus:name":      "org.test.dbus",
     "dbus:object":    "/org/test/dbus/object",
     "dbus:interface": "org.test.dbus.interface",
-    "dbus:autostart":    "run_service",
+    "dbus:autostart": "run_service",
     "dbus:signal":    "take_snapshot"
 }

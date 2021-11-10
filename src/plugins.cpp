@@ -20,11 +20,14 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
+#include <chrono>
 #include <algorithm>
 
 #include "mainscreen.h"
 #include "settings.h"
 #include "plugins.h"
+
+using namespace std::chrono_literals;
 
 /* PluginParams */
 PluginParams::PluginParams(const JsonObject & jo)
@@ -75,9 +78,9 @@ PluginParams::PluginParams(const JsonObject & jo)
 }
 
 /* BasePlugin */
-BasePlugin::BasePlugin(const PluginParams & params, Window & win) : PluginParams(params), lib(NULL), data(NULL),
-    fun_get_name(NULL), fun_get_version(NULL), fun_init(NULL), fun_quit(NULL),
-    threadInitialize(false), threadAction(false), threadExit(false), parent(& win), thread(NULL)
+BasePlugin::BasePlugin(const PluginParams & params, Window & win) : PluginParams(params), lib(nullptr), data(nullptr),
+    fun_get_name(nullptr), fun_get_version(nullptr), fun_init(nullptr), fun_quit(nullptr),
+    threadInitialize(false), threadAction(false), threadExit(false), threadResult(0), parent(& win)
 {
     lib = Systems::openLib(file);
 
@@ -95,13 +98,13 @@ BasePlugin::BasePlugin(const PluginParams & params, Window & win) : PluginParams
 
 BasePlugin::~BasePlugin()
 {
-    if(thread)
+    if(thread.joinable())
     {
-        int returnCode;
 	threadExit = true;
-        Tools::delay(200);
+        std::this_thread::sleep_for(200ms);
+
         DEBUG("wait thread: " << name);
-        SDL_WaitThread(thread, & returnCode);
+        thread.join();
     }
 
     if(lib)
@@ -109,6 +112,18 @@ BasePlugin::~BasePlugin()
         if(fun_quit && data)
 	    fun_quit(data);
 	Systems::closeLib(lib);
+    }
+}
+
+void BasePlugin::joinThread(void)
+{
+    if(thread.joinable())
+    {
+	threadExit = true;
+        std::this_thread::sleep_for(200ms);
+
+        DEBUG("wait thread: " << name);
+        thread.join();
     }
 }
 
@@ -160,7 +175,7 @@ bool BasePlugin::loadFunctions(void)
 
 const char* BasePlugin::pluginName(void) const
 {
-    return fun_get_name ? fun_get_name() : NULL;
+    return fun_get_name ? fun_get_name() : nullptr;
 }
 
 int BasePlugin::pluginVersion(void) const
@@ -170,7 +185,7 @@ int BasePlugin::pluginVersion(void) const
 
 /* CapturePlugin */
 CapturePlugin::CapturePlugin(const PluginParams & params, Window & win) : BasePlugin(params, win),
-    fun_frame_action(NULL), fun_get_surface(NULL)
+    fun_frame_action(nullptr), fun_get_surface(nullptr)
 {
     blue = generateBlueScreen(_("error"));
 
@@ -178,43 +193,33 @@ CapturePlugin::CapturePlugin(const PluginParams & params, Window & win) : BasePl
     {
         blue = generateBlueScreen(_("initialize"));
 
-	thread = SDL_CreateThread(runThreadInitialize, name.c_str(), this);
-        SDL_DetachThread(thread);
-        thread = NULL;
-        DEBUG("detach thread: " << name);
+	thread = std::thread([this](){
+            if(this->data)
+                this->fun_quit(this->data);
+
+	    this->threadInitialize = false;
+            DEBUG("thread init start: " << this->name);
+
+	    while(! this->threadExit)
+	    {
+	        if(nullptr != (this->data = this->fun_init(this->config)))
+                {
+		    this->threadInitialize = true;
+                    DEBUG("thread init complete: " << this->name);
+		    break;
+	        }
+
+                // free res
+                ERROR("thread init broken: " << this->name);
+                std::this_thread::sleep_for(3000ms);
+	    }
+        });
     }
 }
 
-int CapturePlugin::runThreadInitialize(void* ptr)
+CapturePlugin::~CapturePlugin()
 {
-    if(ptr)
-    {
-	CapturePlugin* capture = reinterpret_cast<CapturePlugin*>(ptr);
-
-        if(capture->data)
-            capture->fun_quit(capture->data);
-
-        DEBUG("thread init start: " << capture->name);
-
-	while(! capture->threadExit)
-	{
-	    if(NULL != (capture->data = capture->fun_init(capture->config)))
-            {
-		capture->threadInitialize = true;
-                DEBUG("thread init complete: " << capture->name);
-		return 0;
-	    }
-
-            // free res
-	    capture->threadInitialize = false;
-            ERROR("thread init broken: " << capture->name);
-
-	    // delay 3 sec
-	    Tools::delay(3000);
-	}
-    }
-
-    return -1;
+    joinThread();
 }
 
 Surface CapturePlugin::generateBlueScreen(const std::string & label) const
@@ -260,47 +265,32 @@ bool CapturePlugin::loadFunctions(void)
     return true;
 }
 
-int CapturePlugin::runThreadAction(void* ptr)
-{
-    if(ptr)
-    {
-	CapturePlugin* capture = reinterpret_cast<CapturePlugin*>(ptr);
-
-        if(capture->data)
-        {
-
-            int err = capture->fun_frame_action(capture->data);
-            DisplayScene::pushEvent(capture->parent, err ? ActionFrameError : ActionFrameComplete, NULL);
-            capture->threadAction = false;
-	    return 0;
-        }
-    }
-
-    return -1;
-}
-
 int CapturePlugin::frameAction(void)
 {
-    if(fun_frame_action && data)
+    if(threadInitialize && fun_frame_action && data)
     {
-        if(threadInitialize)
+        if(threadAction)
         {
-    	    if(threadAction)
-            {
-                // wait action complete
-                return 0;
-            }
-            else
-            {
-                threadAction = true;
-                //DEBUG("thread action start: " << name);
-                thread = SDL_CreateThread(runThreadAction, name.c_str(), this);
-                return 0;
-            }
+            // wait action complete
+            return 0;
+        }
+        else
+        {
+            threadAction = true;
+            //DEBUG("thread action start: " << name);
+	    if(thread.joinable())
+		thread.join();
+            thread = std::thread([this](){
+                int err = this->fun_frame_action(this->data);
+                DisplayScene::pushEvent(this->parent, err ? ActionFrameError : ActionFrameComplete, nullptr);
+                this->threadAction = false;
+                this->threadResult = err;
+            });
+            return 0;
         }
     }
 
-    DisplayScene::pushEvent(parent, ActionFrameComplete, NULL);
+    DisplayScene::pushEvent(parent, ActionFrameComplete, nullptr);
     return 1;
 }
 
@@ -310,16 +300,14 @@ const Surface & CapturePlugin::getSurface(void)
     {
 	if(threadInitialize)
         {
-            int res = 0;
-
 	    if(threadAction)
 	    {
-    	        SDL_WaitThread(thread, & res);
+    	        if(thread.joinable())
+                    thread.join();
                 threadAction = false;
-	        thread = NULL;
 	    }
 
-	    if(0 == res)
+	    if(0 == threadResult)
 	        return fun_get_surface(data);
         }
     }
@@ -330,50 +318,40 @@ const Surface & CapturePlugin::getSurface(void)
 
 /* StoragePlugin */
 StoragePlugin::StoragePlugin(const PluginParams & params, Window & win) : BasePlugin(params, win),
-    fun_store_action(NULL), fun_set_surface(NULL)
+    fun_store_action(nullptr), fun_set_surface(nullptr)
 {
     signals = params.config.getStdList<std::string>("signals");
     std::transform(signals.begin(), signals.end(), signals.begin(), String::toLower);
 
     if(loadFunctions())
     {
-	thread = SDL_CreateThread(runThreadInitialize, name.c_str(), this);
-        SDL_DetachThread(thread);
-        thread = NULL;
-        DEBUG("detach thread: " << name);
+	thread = std::thread([this](){
+            if(this->data)
+                this->fun_quit(this->data);
+
+            this->threadInitialize = false;
+            DEBUG("thread init start: " << this->name);
+
+	    while(! this->threadExit)
+	    {
+	        if(nullptr != (this->data = this->fun_init(this->config)))
+                {
+		    this->threadInitialize = true;
+                    DEBUG("thread init complete: " << this->name);
+		    break;
+	        }
+
+                // free res
+                ERROR("thread init broken: " << this->name);
+                std::this_thread::sleep_for(3000ms);
+	    }
+        });
     }
 }
 
-int StoragePlugin::runThreadInitialize(void* ptr)
+StoragePlugin::~StoragePlugin()
 {
-    if(ptr)
-    {
-	StoragePlugin* storage = reinterpret_cast<StoragePlugin*>(ptr);
-
-        if(storage->data)
-            storage->fun_quit(storage->data);
-
-        DEBUG("thread init start: " << storage->name);
-
-	while(! storage->threadExit)
-	{
-	    if(NULL != (storage->data = storage->fun_init(storage->config)))
-            {
-		storage->threadInitialize = true;
-                DEBUG("thread init complete: " << storage->name);
-		return 0;
-	    }
-
-            // free res
-	    storage->threadInitialize = false;
-            ERROR("thread init broken: " << storage->name);
-
-	    // delay 3 sec
-	    Tools::delay(3000);
-	}
-    }
-
-    return -1;
+    joinThread();
 }
 
 bool StoragePlugin::loadFunctions(void)
@@ -422,42 +400,28 @@ bool StoragePlugin::loadFunctions(void)
     return true;
 }
 
-int StoragePlugin::runThreadAction(void* ptr)
-{
-    if(ptr)
-    {
-	StoragePlugin* storage = reinterpret_cast<StoragePlugin*>(ptr);
-
-        if(storage->data)
-        {
-            int err = storage->fun_store_action(storage->data);
-            if(0 == err) DisplayScene::pushEvent(storage->parent, ActionStoreComplete, NULL);
-            storage->threadAction = false;
-	    return 0;
-        }
-    }
-
-    return -1;
-}
-
 int StoragePlugin::storeAction(void)
 {
-    if(fun_store_action && data)
+    if(threadInitialize && fun_store_action && data)
     {
-        if(threadInitialize)
+        if(threadAction)
         {
-    	    if(threadAction)
-            {
-                // wait action complete
-                return 0;
-            }
-            else
-            {
-                threadAction = true;
-                //DEBUG("thread action start: " << name);
-                thread = SDL_CreateThread(runThreadAction, name.c_str(), this);
-                return 0;
-            }
+            // wait action complete
+            return 0;
+        }
+        else
+        {
+            threadAction = true;
+            //DEBUG("thread action start: " << name);
+	    if(thread.joinable())
+		thread.join();
+            thread = std::thread([this](){
+                int err = this->fun_store_action(this->data);
+                if(0 == err) DisplayScene::pushEvent(this->parent, ActionStoreComplete, nullptr);
+                this->threadAction = false;
+                this->threadResult = err;
+            });
+            return 0;
         }
     }
 
@@ -470,16 +434,14 @@ int StoragePlugin::setSurface(const Surface & sf)
     {
 	if(threadInitialize)
         {
-            int res = 0;
-
 	    if(threadAction)
 	    {
-    	        SDL_WaitThread(thread, & res);
+    	        if(thread.joinable())
+                    thread.join();
                 threadAction = false;
-	        thread = NULL;
 	    }
 
-	    if(0 == res)
+	    if(0 == threadResult)
 	        return fun_set_surface(data, sf);
         }
     }
@@ -493,16 +455,14 @@ SurfaceLabel StoragePlugin::getSurfaceLabel(void)
     {
 	if(threadInitialize)
         {
-            int res = 0;
-
 	    if(threadAction)
 	    {
-    	        SDL_WaitThread(thread, & res);
+    	        if(thread.joinable())
+                    thread.join();
                 threadAction = false;
-	        thread = NULL;
 	    }
 
-	    if(0 == res)
+	    if(0 == threadResult)
 	        return SurfaceLabel(fun_get_surface(data), fun_get_label(data));
         }
     }
@@ -531,12 +491,9 @@ std::string StoragePlugin::findSignal(const std::string & str) const
 }
 
 /* SignalPlugin */
-SignalPlugin::SignalPlugin(const PluginParams & params, Window & win) : BasePlugin(params, win),
-    tickval(0), isthread(false), fun_action(NULL)
+SignalPlugin::SignalPlugin(const PluginParams & params, Window & win)
+    : BasePlugin(params, win), fun_action(nullptr), fun_stop_thread(nullptr)
 {
-    tickval = params.config.getInteger("tick", 0);
-    isthread = params.config.getBoolean("thread", false);
-
     if(loadFunctions())
     {
 	data = fun_init(config);
@@ -545,16 +502,20 @@ SignalPlugin::SignalPlugin(const PluginParams & params, Window & win) : BasePlug
             threadInitialize = true;
 
             // action mode: thread
-            if(isthread)
-            {
-                DEBUG("thread action start: " << name);
-    	        thread = SDL_CreateThread(fun_action, name.c_str(), data);
-                SDL_DetachThread(thread);
-                thread = NULL;
-                DEBUG("detach thread: " << name);
-            }
+            DEBUG("thread action start: " << name);
+    	    thread = std::thread([this](){
+                this->fun_action(this->data);
+            });
         }
     }
+}
+
+SignalPlugin::~SignalPlugin()
+{
+    if(fun_stop_thread && data)
+        fun_stop_thread(data);
+
+    joinThread();
 }
 
 bool SignalPlugin::loadFunctions(void)
@@ -573,18 +534,14 @@ bool SignalPlugin::loadFunctions(void)
         return false;
     }
 
+    // fun_stop_thread
+    str = std::string(name).append("_stop_thread");
+    fun_stop_thread = (void (*)(void*)) Systems::procAddressLib(lib, str);
+    if(! fun_stop_thread)
+    {
+        ERROR("cannot load function: " << str);
+        return false;
+    }
+
     return true;
-}
-
-bool SignalPlugin::isTick(u32 ms) const
-{
-    return 0 < tickval ? tt.check(ms, tickval) : false;
-}
-
-int SignalPlugin::signalAction(void)
-{
-    if(fun_action && data)
-	return fun_action(data);
-
-    return -1;
 }

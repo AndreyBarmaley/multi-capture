@@ -56,6 +56,7 @@ struct capture_flycap_t
 
 	if(context)
 	{
+    	    fc2Disconnect(context);
 	    fc2DestroyContext(context);
 	    context = NULL;
 	}
@@ -162,7 +163,7 @@ bool capture_flycap_init_cam(capture_flycap_t & st)
     {
     	if(numCameras <= st.cam_index)
     	{
-            ERROR("No cameras detected, index: " << st.cam_index);
+            ERROR("No cameras detected, index: " << st.cam_index << ", found: " << numCameras);
     	}
 	else
 	{

@@ -60,7 +60,7 @@ const char* capture_image_get_name(void)
 
 int capture_image_get_version(void)
 {
-    return 20210128;
+    return 20211121;
 }
 
 void* capture_image_init(const JsonObject & config)

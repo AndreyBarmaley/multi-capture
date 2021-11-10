@@ -32,7 +32,9 @@ extern "C" {
 struct signal_dbus_signal_t
 {
     bool	is_used;
+    bool        is_thread;
     bool        is_debug;
+    int         delay;
     std::string system_signal;
     std::string dbus_name;
     std::string dbus_object;
@@ -41,12 +43,14 @@ struct signal_dbus_signal_t
     std::string dbus_autostart;
     DBusConnection* dbus_conn;
 
-    signal_dbus_signal_t() : is_used(false), is_debug(false), dbus_conn(NULL) {}
+    signal_dbus_signal_t() : is_used(false), is_thread(true), is_debug(false), delay(100), dbus_conn(NULL) {}
 
     void clear(void)
     {
         is_used = false;
+        is_thread = true;
         is_debug = false;
+        delay = 100;
         system_signal.clear();
 	dbus_name.clear();
 	dbus_interface.clear();
@@ -68,7 +72,7 @@ const char* signal_dbus_signal_get_name(void)
 
 int signal_dbus_signal_get_version(void)
 {
-    return 20210130;
+    return 20211121;
 }
 
 int signal_dbus_autostart(signal_dbus_signal_t* st)
@@ -140,6 +144,7 @@ void* signal_dbus_signal_init(const JsonObject & config)
 
     st->is_used = true;
     st->is_debug = config.getBoolean("debug", false);
+    st->delay = config.getInteger("delay", 100);
     st->system_signal = config.getString("signal");
     bool dbusIsSystem = config.getBoolean("dbus:system", false);
  
@@ -204,7 +209,8 @@ void* signal_dbus_signal_init(const JsonObject & config)
     }
 
     DEBUG("params: " << "signal = " << st->system_signal);
-    DEBUG("params: " << "dbus:system" << " = " << (dbusIsSystem ? "true" : "false"));
+    DEBUG("params: " << "delay = " << st->delay);
+    DEBUG("params: " << "dbus:system" << " = " << String::Bool(dbusIsSystem));
     DEBUG("params: " << "dbus:name" << " = " << st->dbus_name);
     DEBUG("params: " << "dbus:object" << " = " << st->dbus_object);
     DEBUG("params: " << "dbus:interface" << " = " << st->dbus_interface);
@@ -230,15 +236,24 @@ void signal_dbus_signal_quit(void* ptr)
     st->clear();
 }
 
+void signal_dbus_signal_stop_thread(void* ptr)
+{
+    signal_dbus_signal_t* st = static_cast<signal_dbus_signal_t*>(ptr);
+    if(st->is_debug) DEBUG("version: " << signal_dbus_signal_get_version());
+
+    if(st->is_thread)
+	st->is_thread = false;
+}
+
 int signal_dbus_signal_action(void* ptr)
 {
     signal_dbus_signal_t* st = static_cast<signal_dbus_signal_t*>(ptr);
     if(st->is_debug) DEBUG("version: " << signal_dbus_signal_get_version());
 
-    int loop = 1;
+    bool sendSignal = false;
 
     // loop listening for signals being emmitted
-    while(loop)
+    while(st->is_thread)
     {
 	// non blocking read of the next available message
 	dbus_connection_read_write(st->dbus_conn, 0);
@@ -247,13 +262,10 @@ int signal_dbus_signal_action(void* ptr)
 	// loop again if we haven't read a message
 	if(NULL == dbus_msg)
 	{
-	    // 10 ms
-	    Tools::delay(100);
+	    Tools::delay(st->delay);
 	    continue;
 	}
 
-
-	bool sendSignal = false;
 	// check if the message is a signal from the correct interface and with the correct name
 	if(dbus_message_is_signal(dbus_msg, st->dbus_interface.c_str(), st->dbus_signal.c_str()))
 	{
@@ -285,7 +297,11 @@ int signal_dbus_signal_action(void* ptr)
 	if(sendSignal)
 	{
             DisplayScene::pushEvent(NULL, ActionBackSignal, & st->dbus_signal);
+            sendSignal = false;
 	}
+
+	if(st->is_thread)
+	  Tools::delay(st->delay);
     }
 
     return 0;

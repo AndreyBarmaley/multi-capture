@@ -1,6 +1,0 @@
-{
-    "debug":	true,
-    "thread":   false,
-    "signal":	"signal_test_tick",
-    "tick":	5000
-}

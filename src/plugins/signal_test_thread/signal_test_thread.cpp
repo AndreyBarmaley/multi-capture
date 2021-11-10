@@ -31,13 +31,17 @@ extern "C" {
 struct signal_test_thread_t
 {
     bool        is_debug;
+    bool        is_thread;
+    int         delay;
     std::string signal;
 
-    signal_test_thread_t() : is_debug(false) {}
+    signal_test_thread_t() : is_debug(false), is_thread(true), delay(1000) {}
 
     void clear(void)
     {
         is_debug = false;
+        is_thread = true;
+        delay = 1000;
         signal.clear();
     }
 };
@@ -51,7 +55,7 @@ const char* signal_test_thread_get_name(void)
 
 int signal_test_thread_get_version(void)
 {
-    return 20210130;
+    return 20211121;
 }
 
 void* signal_test_thread_init(const JsonObject & config)
@@ -61,9 +65,11 @@ void* signal_test_thread_init(const JsonObject & config)
     signal_test_thread_t* st = & signal_test_thread_vals;
 
     st->is_debug = config.getBoolean("debug", false);
+    st->delay = config.getInteger("delay", 100);
     st->signal = config.getString("signal");
  
     DEBUG("params: " << "signal = " << st->signal);
+    DEBUG("params: " << "delay = " << st->delay);
 
     return st;
 }
@@ -75,20 +81,27 @@ void signal_test_thread_quit(void* ptr)
     st->clear();
 }
 
+void signal_test_thread_stop_thread(void* ptr)
+{
+    signal_test_thread_t* st = static_cast<signal_test_thread_t*>(ptr);
+    if(st->is_debug) DEBUG("version: " << signal_test_thread_get_version());
+
+    if(st->is_thread)
+        st->is_thread = false;
+}
+
 int signal_test_thread_action(void* ptr)
 {
     signal_test_thread_t* st = static_cast<signal_test_thread_t*>(ptr);
     if(st->is_debug) DEBUG("version: " << signal_test_thread_get_version());
 
-    int loop = 1;
-
     // thread loop
-    while(loop)
+    while(st->is_thread)
     {
 	VERBOSE("FIXME thread action");
-        DisplayScene::pushEvent(NULL, ActionBackSignal, & st->signal);
 
-	Tools::delay(5000);
+        DisplayScene::pushEvent(NULL, ActionBackSignal, & st->signal);
+	Tools::delay(st->delay);
     }
 
     return 0;

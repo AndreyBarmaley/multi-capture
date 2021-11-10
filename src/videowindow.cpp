@@ -33,18 +33,13 @@ WindowParams::WindowParams(const JsonObject & jo)
     fillColor = JsonUnpack::color(jo, "window:fill", Color::Navy);
     position = JsonUnpack::rect(jo, "position");
 
-    const JsonObject* jo2 = NULL;
+    const JsonObject* jo2 = nullptr;
 
     jo2 = jo.getObject("capture");
     if(jo2) capture = PluginParams(*jo2);
 
     jo2 = jo.getObject("storage");
     if(jo2) storage = PluginParams(*jo2);
-
-    if(capture.file.empty())
-    {
-	capture.file = Systems::concatePath(".", std::string(capture.name).append(Systems::suffixLib()));
-    }
 }
 
 /* VideoWindow */
@@ -79,7 +74,7 @@ VideoWindow::VideoWindow(const WindowParams & params, Window & parent) : Window(
     }
     else
     {
-	ERROR("capture plugin not found: " << capture.name << ", file: " << capture.file);
+	ERROR("capture plugin not found: " << capture.file);
     }
 
     // init storage plugin
@@ -102,7 +97,7 @@ VideoWindow::VideoWindow(const WindowParams & params, Window & parent) : Window(
 	}
 	else
 	{
-	    ERROR("storage plugin not found: " << capture.name << ", file: " << capture.file);
+	    ERROR("storage plugin not found: " << storage.file);
 	}
     }
 
@@ -136,7 +131,7 @@ void VideoWindow::tickEvent(u32 ms)
                 ttStorage.check(ms, signalPluginParamTick))
 	    {
 		storagePlugin->setSurface(back);
-		pushEventAction(ActionBackStore, this, NULL);
+		pushEventAction(ActionBackStore, this, nullptr);
 	    }
 	}
     }
@@ -237,7 +232,7 @@ bool VideoWindow::mousePressEvent(const ButtonEvent & coord)
 	{
 	    DEBUG("receive signal: " << signal);
 	    storagePlugin->setSurface(back);
-	    pushEventAction(ActionBackStore, this, NULL);
+	    pushEventAction(ActionBackStore, this, nullptr);
 	    return true;
 	}
     }
@@ -259,7 +254,7 @@ bool VideoWindow::keyPressEvent(const KeySym & key)
 	    {
 		DEBUG("receive signal: " << signal);
 		storagePlugin->setSurface(back);
-		pushEventAction(ActionBackStore, this, NULL);
+		pushEventAction(ActionBackStore, this, nullptr);
 		return true;
 	    }
 	}

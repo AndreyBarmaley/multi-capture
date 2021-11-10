@@ -34,6 +34,8 @@
 #endif
 
 #include <atomic>
+#include <thread>
+
 #include "settings.h"
 
 enum { PluginReturnTrue = 0, PluginReturnFalse = -1, PluginReturnClose = -2 };
@@ -72,11 +74,13 @@ protected:
     std::atomic<bool>	threadInitialize;
     std::atomic<bool>	threadAction;
     std::atomic<bool>	threadExit;
+    std::atomic<int>    threadResult;
 
     Window*             parent;
-    SDL_Thread*	        thread;
+    std::thread	        thread;
 
     bool                loadFunctions(void);
+    void                joinThread(void);
 
 public:
     BasePlugin(const PluginParams &, Window &);
@@ -100,11 +104,9 @@ protected:
     bool                loadFunctions(void);
     Surface             generateBlueScreen(const std::string &) const;
 
-    static int          runThreadInitialize(void*);
-    static int          runThreadAction(void*);
-
 public:
     CapturePlugin(const PluginParams &, Window &);
+    ~CapturePlugin();
 
     int			frameAction(void);
     const Surface &	getSurface(void);
@@ -120,13 +122,11 @@ protected:
     const Surface &	(*fun_get_surface) (void*);
     const std::string &	(*fun_get_label) (void*);
 
-    bool loadFunctions(void);
-
-    static int          runThreadInitialize(void*);
-    static int          runThreadAction(void*);
+    bool                loadFunctions(void);
 
 public:
     StoragePlugin(const PluginParams &, Window &);
+    ~StoragePlugin();
 
     int			storeAction(void);
     int			setSurface(const Surface &);
@@ -137,19 +137,15 @@ public:
 
 class SignalPlugin : public BasePlugin
 {
-    int			tickval;
-    bool                isthread;
-
 protected:
     int			(*fun_action) (void*);
+    void                (*fun_stop_thread) (void*);
 
-    bool loadFunctions(void);
+    bool                loadFunctions(void);
 
 public:
     SignalPlugin(const PluginParams &, Window &);
-
-    bool		isTick(u32 ms) const;
-    int			signalAction(void);
+    ~SignalPlugin();
 };
 
 #endif

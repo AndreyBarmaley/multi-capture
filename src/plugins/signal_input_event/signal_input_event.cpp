@@ -20,7 +20,13 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
-#include <cstring>
+#include <fcntl.h>
+#include <unistd.h>
+#include <linux/input.h>
+#include <sys/select.h>
+
+#include <cstdio>
+#include <cstdlib>
 
 #include "../../settings.h"
 
@@ -31,6 +37,7 @@ extern "C" {
 struct signal_input_event_t
 {
     bool        is_used;
+    bool        is_thread;
     bool        is_debug;
     std::string signal;
     std::string device;
@@ -39,11 +46,12 @@ struct signal_input_event_t
     int		code;
     int		value;
 
-    signal_input_event_t() : is_used(false), is_debug(false), delay(100), type(0), code(0), value(-1) {}
+    signal_input_event_t() : is_used(false), is_thread(true), is_debug(false), delay(100), type(0), code(0), value(-1) {}
 
     void clear(void)
     {
 	is_used = false;
+	is_thread = true;
         is_debug = false;
         signal.clear();
 	device.clear();
@@ -67,7 +75,7 @@ const char* signal_input_event_get_name(void)
 
 int signal_input_event_get_version(void)
 {
-    return 20210130;
+    return 20211121;
 }
 
 void* signal_input_event_init(const JsonObject & config)
@@ -97,6 +105,11 @@ void* signal_input_event_init(const JsonObject & config)
     st->value = config.getInteger("event:value", -1);
  
     DEBUG("params: " << "signal = " << st->signal);
+    DEBUG("params: " << "device = " << st->device);
+    DEBUG("params: " << "delay = " << st->delay);
+    DEBUG("params: " << "event:type = " << String::hex(st->type, 4));
+    DEBUG("params: " << "event:code = " << String::hex(st->code, 4));
+    DEBUG("params: " << "event:value = " << st->value);
 
     return st;
 }
@@ -108,48 +121,79 @@ void signal_input_event_quit(void* ptr)
     st->clear();
 }
 
+void signal_input_event_stop_thread(void* ptr)
+{
+    signal_input_event_t* st = static_cast<signal_input_event_t*>(ptr);
+    if(st->is_debug) DEBUG("version: " << signal_input_event_get_version());
+
+    if(st->is_thread)
+	st->is_thread = false;
+}
+
 int signal_input_event_action(void* ptr)
 {
     signal_input_event_t* st = static_cast<signal_input_event_t*>(ptr);
     if(st->is_debug) DEBUG("version: " << signal_input_event_get_version());
 
-    int loop = 1;
+    int fd = 0;
+    int res = 0;
+    struct input_event ev;
+    fd_set set;
+    struct timeval tv;
+
+    tv.tv_sec  = 0;
+    tv.tv_usec = st->delay ? st->delay : 1;
 
     // thread loop
-    while(loop)
+    while(st->is_thread)
     {
-	StreamFile sf(st->device, "rb");
+        if(! fd)
+            fd = open(st->device.c_str(), O_RDONLY);
 
-	if(sf.isValid())
-	{
-    	    // skip tv_sec
-	    sf.skip(4);
+        if(fd)
+        {
+            FD_ZERO(&set);
+            FD_SET(fd, &set);
 
-    	    // skip tv_usec
-	    sf.skip(4);
+            switch(select(fd+1, &set, NULL, NULL, &tv))
+            {
+                case -1: ERROR("select failed"); close(fd); fd = 0; break;
+                case 0: break;
 
-    	    int type = sf.getLE16();
-    	    int code = sf.getLE16();
-    	    int value = sf.getLE32();
+                default:
+                    if(FD_ISSET(fd, &set))
+                    {
+                        if(0 < read(fd, & ev, sizeof(ev)))
+                        {
+        		    if(st->is_debug)
+                        	VERBOSE("dump input - " << "type: " << String::hex(ev.type, 4) <<
+                            	    ", code: " << String::hex(ev.code, 4) << ", value: " << ev.value);
 
-	    if(type == st->type &&
-		code == st->code &&
-		(0 > st->value || st->value == value))
-                DisplayScene::pushEvent(NULL, ActionBackSignal, & st->signal);
-
-	    sf.close();
-	    Tools::delay(st->delay);
-	}
-	else
-	{
-	    ERROR("invalid device: " << st->device);
-	    // 15 sec reread device
-	    Tools::delay(15000);
-	}
+			    if(ev.type == st->type && ev.code == st->code &&
+		        	(0 > st->value || st->value == ev.value))
+            	        	DisplayScene::pushEvent(NULL, ActionBackSignal, & st->signal);
+                        }
+                        else
+                        {
+                            ERROR("read failed");
+			    close(fd); fd = 0;
+                        }
+                    }
+                    break;
+            }
+        }
+        else
+        {
+            ERROR("file open: " << st->device);
+            // 5 sec reread device
+	    if(st->is_thread) Tools::delay(5000);
+        }
     }
 
-    // reinitialized plugin disabled
-    return 0;
+    if(fd)
+        close(fd);
+
+    return res;
 }
 
 #ifdef __cplusplus
