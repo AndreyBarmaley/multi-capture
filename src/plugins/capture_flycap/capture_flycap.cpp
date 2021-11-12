@@ -156,6 +156,10 @@ bool capture_flycap_init_cam(capture_flycap_t & st)
 	return false;
     }
 
+    error = fc2RescanBus(context);
+    if(error != FC2_ERROR_OK)
+	ERROR("Error in fc2RescanBus: " << error);
+
     unsigned int numCameras = 0;
     error = fc2GetNumOfCameras(context, & numCameras);
 

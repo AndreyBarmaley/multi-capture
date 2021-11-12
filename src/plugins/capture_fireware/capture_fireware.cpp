@@ -73,13 +73,17 @@ struct capture_fireware_t
     int			rgb_height;
 
     capture_fireware_t() : is_used(false), is_debug(false), raw1394(NULL), iec61883_dv(NULL), iec61883_mpeg2(NULL), dv_decoder(NULL), mpeg_decoder(NULL),
-	guid(0), node(-1), port(-1), type(0), input(-1), output(-1), channel(-1), bandwidth(0), max_packets(100), receiving(0), rgb_data(NULL), rgb_width(0), rgb_height(0) {}
+	guid(0), node(-1), port(-1), type(0), input(-1), output(-1), channel(-1), bandwidth(0), max_packets(100), receiving(0), rgb_data(NULL), rgb_width(0), rgb_height(0)
+    {
+        raw1394_poll = {0};
+    }
 
     void clear(void)
     {
 	is_used = false;
 	is_debug = false;
 	raw1394 = NULL;
+        raw1394_poll = {0};
 	iec61883_dv = NULL;
 	iec61883_mpeg2 = NULL;
 	dv_decoder = NULL;
@@ -257,7 +261,7 @@ int capture_fireware_dv_callback(unsigned char* data, int length, int complete, 
 	    VERBOSE("version: " << capture_fireware_get_version() << ", packet length: " << length << ", complete: " << complete <<
 		    ", frame size: " << st->dv_decoder->width << "x" << st->dv_decoder->height << ", dv_parse_header: " << res);
 
-	if(data && 0 < length)
+	if(0 < length)
 	{
 	    if(! st->rgb_data)
 	    {
@@ -376,11 +380,16 @@ void* capture_fireware_init(const JsonObject & config)
         st->dv_decoder = dv_decoder_new(0, 0, 0);
 
 	if(! st->dv_decoder)
+        {
 	    ERROR("DV decoder error");
-
-        st->dv_decoder->quality = DV_QUALITY_BEST;
-        iec61883_dv_fb_start(st->iec61883_dv, st->channel);
-	VERBOSE("DV mode started, index: " << devindex);
+            return NULL;
+        }
+        else
+        {
+            st->dv_decoder->quality = DV_QUALITY_BEST;
+            iec61883_dv_fb_start(st->iec61883_dv, st->channel);
+	    VERBOSE("DV mode started, index: " << devindex);
+        }
     }
 
     return st;

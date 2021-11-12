@@ -282,7 +282,7 @@ int CapturePlugin::frameAction(void)
 		thread.join();
             thread = std::thread([this](){
                 int err = this->fun_frame_action(this->data);
-                DisplayScene::pushEvent(this->parent, err ? ActionFrameError : ActionFrameComplete, nullptr);
+                DisplayScene::pushEvent(this->parent, err ? ActionPluginReset : ActionFrameComplete, nullptr);
                 this->threadAction = false;
                 this->threadResult = err;
             });

@@ -20,10 +20,13 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
+#include <chrono>
 #include <algorithm>
 
 #include "mainscreen.h"
 #include "videowindow.h"
+
+using namespace std::chrono_literals;
 
 /* WindowParams */
 WindowParams::WindowParams(const JsonObject & jo)
@@ -146,7 +149,10 @@ bool VideoWindow::userEvent(int act, void* data)
 	    renderWindow();
 	    return true;
 
-	case ActionFrameError:
+	case ActionPluginReset:
+	    // unload dl
+	    capturePlugin.reset();
+	    std::this_thread::sleep_for(100ms);
 	    capturePlugin.reset(new CapturePlugin(capture, *this));
             return true;
 

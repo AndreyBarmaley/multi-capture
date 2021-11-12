@@ -146,9 +146,12 @@ int capture_ffmpeg_v4l2_channel_input(const std::string & dev, const std::string
 char* string_dup(const std::string & str)
 {   
     size_t len = str.size();
-    char*  res = (char*) malloc(len + 1);
-    std::copy(str.begin(), str.end(), res);
-    res[len] = 0;
+    char* res = (char*) malloc(len + 1);
+    if(res)
+    {
+        std::copy(str.begin(), str.end(), res);
+        res[len] = 0;
+    }
     return res;
 }
 
