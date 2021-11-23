@@ -20,6 +20,8 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
+#include <sys/stat.h>
+
 #include "../../settings.h"
 
 #ifdef __cplusplus
@@ -110,7 +112,7 @@ int storage_file_store_action(void* ptr)
 
 	if(! Systems::isDirectory(dir))
 	{
-	    if(! Systems::makeDirectory(dir))
+	    if(! Systems::makeDirectory(dir, 0755))
 	    {
 		ERROR("error mkdir: " << dir);
 		return -1;

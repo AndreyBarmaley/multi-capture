@@ -98,6 +98,15 @@ void MainScreen::renderWindow(void)
 
 bool MainScreen::keyPressEvent(const KeySym & key)
 {
+    if(key.keycode() == Key::PAGEUP && gallery)
+    {
+	gallery->scrollUp(4);
+    }
+    else
+    if(key.keycode() == Key::PAGEDOWN && gallery)
+    {
+	gallery->scrollDown(4);
+    }
     if(key.keycode() == Key::ESCAPE)
     {
         TermGUI::MessageBox msg(Settings::programName(), _("Exit from my super program?"),

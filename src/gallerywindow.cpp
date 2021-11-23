@@ -35,7 +35,10 @@ GalleryItem::GalleryItem(const Surface & sf, const std::string & label, GalleryW
 
     MainScreen* main = static_cast<MainScreen*>(win.parent());
     if(main)
+    {
 	renderToolTip(label, main->fontRender(), Color::Black, Color::Wheat, Color::MidnightBlue);
+	Display::renderText(main->fontRender(), Systems::basename(label), Color::Yellow, thumbnail, Point(5, 5), AlignLeft, AlignBottom);
+    }
 
     setVisible(true);
 }
@@ -63,5 +66,7 @@ void GalleryWindow::renderWindow(void)
 
 void GalleryWindow::addImage(const Surface & sf, const std::string & label)
 {
-    addItem(new GalleryItem(sf, label, *this));
+    auto item = new GalleryItem(sf, label, *this);
+    addItem(item);
+    setActiveItem(item);
 }
