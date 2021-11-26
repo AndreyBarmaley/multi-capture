@@ -5,10 +5,11 @@ Each video source is described by its own section in the configuration file.
 You can also set a signal plugin and an storage action for each video source.  
 
 # capture plugins
-capture_image - read static image from disk  
-capture_script - run script, with result static image  
-capture_fireware - read fireware stream  
-capture_ffmpeg - read ffmpeg stream  
+![capture_image](https://github.com/AndreyBarmaley/multi-capture/wiki/Capture-plugins#capture_image) - read static image from disk  
+![capture_script](https://github.com/AndreyBarmaley/multi-capture/wiki/Capture-plugins#capture_script) - run script, with result static image  
+![capture_fireware](https://github.com/AndreyBarmaley/multi-capture/wiki/Capture-plugins#capture_fireware) - read fireware stream  
+![capture_ffmpeg](https://github.com/AndreyBarmaley/multi-capture/wiki/Capture-plugins#capture_ffmpeg) - read ffmpeg stream  
+![capture_flycap](https://github.com/AndreyBarmaley/multi-capture/wiki/Capture-plugins#capture_flycap) - get image from FlyCapture API
 
 # signal plugins
 ![signal_dbus_event](https://github.com/AndreyBarmaley/multi-capture/wiki/Signal-plugins#signal_dbus_event) - get signal from dbus  
