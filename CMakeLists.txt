@@ -12,11 +12,11 @@ set(SWE_WITH_JSON ON CACHE BOOL "enable json" FORCE)
 set(SWE_WITH_LUA OFF CACHE BOOL "disable lua" FORCE)
 set(SWE_EXAMPLES OFF CACHE BOOL "disable examples" FORCE)
 set(SWE_DISABLE_TERMGUI OFF CACHE BOOL "enable termwin_gui" FORCE)
+set(SWE_SHARED ON CACHE BOOL "enable shared" FORCE)
 
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DBUILD_DEBUG")
 
 add_subdirectory(engine)
-
 include(engine/libswe.cmake)
 
 set(MULTICAP_SOURCE
@@ -27,10 +27,15 @@ set(MULTICAP_SOURCE
     src/settings.cpp
     src/videowindow.cpp)
 
+find_package(Threads REQUIRED)
+
 include_directories(engine src)
 add_executable(MultiCapture ${MULTICAP_SOURCE})
 
-target_link_libraries(MultiCapture libswe)
+target_link_libraries(MultiCapture libswe Threads::Threads)
+
+set_target_properties(libswe PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_target_properties(libswe PROPERTIES ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 set_target_properties(MultiCapture PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_subdirectory(src/plugins)
