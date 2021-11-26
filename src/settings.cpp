@@ -24,7 +24,7 @@
 
 std::string Settings::programName(void)
 {
-    return "Fly Capture";
+    return "Multi Capture";
 }
 
 std::string Settings::programDomain(void)

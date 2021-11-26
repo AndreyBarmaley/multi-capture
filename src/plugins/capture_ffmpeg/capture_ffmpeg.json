@@ -1,6 +1,5 @@
 {
     "debug":	false,
-    "thread":	true,
     "device":	"/dev/video0",
     "format":	"video4linux2",
     "video4linux2:size": [640, 480],

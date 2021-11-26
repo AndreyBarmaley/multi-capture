@@ -20,7 +20,7 @@ add_subdirectory(engine)
 include(engine/libswe.cmake)
 
 set(MULTICAP_SOURCE
-    src/fly_capture.cpp
+    src/multi_capture.cpp
     src/gallerywindow.cpp
     src/mainscreen.cpp
     src/plugins.cpp
