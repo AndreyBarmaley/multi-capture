@@ -1,8 +1,8 @@
 /***************************************************************************
- *   Copyright (C) 2018 by FlyCapture team <public.irkutsk@gmail.com>      *
+ *   Copyright (C) 2018 by MultiCapture team <public.irkutsk@gmail.com>    *
  *                                                                         *
- *   Part of the FlyCapture engine:                                        *
- *   https://github.com/AndreyBarmaley/fly-capture                         *
+ *   Part of the MultiCapture engine:                                      *
+ *   https://github.com/AndreyBarmaley/multi-capture                       *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU General Public License as published by  *
@@ -33,47 +33,49 @@ using namespace std::chrono_literals;
 PluginParams::PluginParams(const JsonObject & jo)
 {
     name = jo.getString("name");
+    type = jo.getString("type");
     file = jo.getString("file");
+
+    if(name.empty())
+	name = type;
 
     if(file.size() && ! Systems::isFile(file))
     {
 	ERROR("plugin not found: " << file);
-	if(name.size()) file.clear();
+	if(type.size()) file.clear();
     }
 
-    // find name.so
-    if(name.size() && file.empty())
+    // find type.so
+    if(type.size() && file.empty())
     {
 	StringList dirs;
 	dirs << "plugins" << "libs";
 
-	const StringList & shares = Systems::shareDirectories(Settings::programDomain());
-	for(auto it = shares.begin(); it != shares.end(); ++it)
-	    dirs << Systems::concatePath(*it, "plugins");
+	for(auto & dir : Systems::shareDirectories(Settings::programDomain()))
+	    dirs << Systems::concatePath(dir, "plugins");
 
-	for(auto it = dirs.begin(); it != dirs.end(); ++it)
+	for(auto & dir : dirs)
 	{
-	    std::string filename = Systems::concatePath(*it, name).append(Systems::suffixLib());
+	    std::string filename = Systems::concatePath(dir, type).append(Systems::suffixLib());
 	    if(Systems::isFile(filename))
 	    {
-		VERBOSE("plugin found: " << filename);
+		VERBOSE("plugin found: " << name << ", (" << filename << ")");
 		file = filename;
 		break;
 	    }
 	}
     }
 
-    if(jo.isObject("config"))
-    {
-        config = *jo.getObject("config");
-    }
-    else
     if(jo.isString("config"))
     {
         JsonContentFile json(jo.getString("config"));
 
         if(json.isValid() && json.isObject())
             config = json.toObject();
+    }
+    else
+    {
+	config = jo;
     }
 }
 
@@ -101,7 +103,7 @@ BasePlugin::~BasePlugin()
     if(thread.joinable())
     {
 	threadExit = true;
-        std::this_thread::sleep_for(200ms);
+        std::this_thread::sleep_for(50ms);
 
         DEBUG("wait thread: " << name);
         thread.join();
@@ -113,6 +115,11 @@ BasePlugin::~BasePlugin()
 	    fun_quit(data);
 	Systems::closeLib(lib);
     }
+}
+
+void BasePlugin::stopThread(void)
+{
+	threadExit = true;
 }
 
 void BasePlugin::joinThread(void)
@@ -135,7 +142,7 @@ bool BasePlugin::loadFunctions(void)
     std::string str;
 
     // fun_init
-    str = std::string(name).append("_init");
+    str = std::string(type).append("_init");
     fun_init = (void* (*)(const JsonObject &)) Systems::procAddressLib(lib, str);
     if(! fun_init)
     {
@@ -144,7 +151,7 @@ bool BasePlugin::loadFunctions(void)
     }
 
     // fun_quit
-    str = std::string(name).append("_quit");
+    str = std::string(type).append("_quit");
     fun_quit = (void (*)(void*)) Systems::procAddressLib(lib, str);
     if(! fun_quit)
     {
@@ -153,7 +160,7 @@ bool BasePlugin::loadFunctions(void)
     }
 
     // fun_name
-    str = std::string(name).append("_get_name");
+    str = std::string(type).append("_get_name");
     fun_get_name = (const char* (*)(void)) Systems::procAddressLib(lib, str);
     if(! fun_get_name)
     {
@@ -162,7 +169,7 @@ bool BasePlugin::loadFunctions(void)
     }
 
     // fun_version
-    str = std::string(name).append("_get_version");
+    str = std::string(type).append("_get_version");
     fun_get_version = (int (*)(void)) Systems::procAddressLib(lib, str);
     if(! fun_get_version)
     {
@@ -245,7 +252,7 @@ bool CapturePlugin::loadFunctions(void)
     std::string str;
 
     // fun_action
-    str = std::string(name).append("_frame_action");
+    str = std::string(type).append("_frame_action");
     fun_frame_action = (int (*)(void*)) Systems::procAddressLib(lib, str);
     if(! fun_frame_action)
     {
@@ -254,7 +261,7 @@ bool CapturePlugin::loadFunctions(void)
     }
 
     // fun_get_surface
-    str = std::string(name).append("_get_surface");
+    str = std::string(type).append("_get_surface");
     fun_get_surface = (const Surface & (*)(void*)) Systems::procAddressLib(lib, str);
     if(! fun_get_surface)
     {
@@ -362,7 +369,7 @@ bool StoragePlugin::loadFunctions(void)
     std::string str;
 
     // fun_store_action
-    str = std::string(name).append("_store_action");
+    str = std::string(type).append("_store_action");
     fun_store_action = (int (*)(void*)) Systems::procAddressLib(lib, str);
     if(! fun_store_action)
     {
@@ -371,7 +378,7 @@ bool StoragePlugin::loadFunctions(void)
     }
 
     // fun_set_surface
-    str = std::string(name).append("_set_surface");
+    str = std::string(type).append("_set_surface");
     fun_set_surface = (int (*)(void*, const Surface &)) Systems::procAddressLib(lib, str);
     if(! fun_set_surface)
     {
@@ -380,7 +387,7 @@ bool StoragePlugin::loadFunctions(void)
     }
 
     // fun_get_label
-    str = std::string(name).append("_get_label");
+    str = std::string(type).append("_get_label");
     fun_get_label = (const std::string & (*)(void*)) Systems::procAddressLib(lib, str);
     if(! fun_get_label)
     {
@@ -389,7 +396,7 @@ bool StoragePlugin::loadFunctions(void)
     }
 
     // fun_get_surface
-    str = std::string(name).append("_get_surface");
+    str = std::string(type).append("_get_surface");
     fun_get_surface = (const Surface & (*)(void*)) Systems::procAddressLib(lib, str);
     if(! fun_get_surface)
     {
@@ -526,7 +533,7 @@ bool SignalPlugin::loadFunctions(void)
     std::string str;
 
     // fun_action
-    str = std::string(name).append("_action");
+    str = std::string(type).append("_action");
     fun_action = (int (*)(void*)) Systems::procAddressLib(lib, str);
     if(! fun_action)
     {
@@ -535,7 +542,7 @@ bool SignalPlugin::loadFunctions(void)
     }
 
     // fun_stop_thread
-    str = std::string(name).append("_stop_thread");
+    str = std::string(type).append("_stop_thread");
     fun_stop_thread = (void (*)(void*)) Systems::procAddressLib(lib, str);
     if(! fun_stop_thread)
     {

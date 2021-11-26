@@ -1,8 +1,8 @@
 /***************************************************************************
- *   Copyright (C) 2018 by FlyCapture team <public.irkutsk@gmail.com>      *
+ *   Copyright (C) 2018 by MultiCapture team <public.irkutsk@gmail.com>    *
  *                                                                         *
- *   Part of the FlyCapture engine:                                        *
- *   https://github.com/AndreyBarmaley/fly-capture                         *
+ *   Part of the MultiCapture engine:                                      *
+ *   https://github.com/AndreyBarmaley/multi-capture                       *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU General Public License as published by  *

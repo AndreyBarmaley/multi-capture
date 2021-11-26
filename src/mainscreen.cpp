@@ -1,8 +1,8 @@
 /***************************************************************************
- *   Copyright (C) 2018 by FlyCapture team <public.irkutsk@gmail.com>      *
+ *   Copyright (C) 2018 by MultiCapture team <public.irkutsk@gmail.com>    *
  *                                                                         *
- *   Part of the FlyCapture engine:                                        *
- *   https://github.com/AndreyBarmaley/fly-capture                         *
+ *   Part of the MultiCapture engine:                                      *
+ *   https://github.com/AndreyBarmaley/multi-capture                       *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU General Public License as published by  *
@@ -28,7 +28,7 @@
 #include "videowindow.h"
 #include "mainscreen.h"
 
-MainScreen::MainScreen(const JsonObject & jo) : DisplayWindow(Color::Black)
+MainScreen::MainScreen(const JsonObject & jo) : DisplayWindow(Color::Black), config(&jo)
 {
     colorBack = jo.getString("display:background");
     auto tmp = new FontRenderTTF(jo.getString("font:file"), jo.getInteger("font:size", 12), jo.getBoolean("font:blend", false) ? SWE::RenderBlended : SWE::RenderSolid);
@@ -47,31 +47,24 @@ MainScreen::MainScreen(const JsonObject & jo) : DisplayWindow(Color::Black)
 	    if(jo2)
 	    {
 		bool skip = jo2->getBoolean("window:skip", false);
-		if(! skip) windows.emplace_back(new VideoWindow(WindowParams(*jo2), *this));
+		if(! skip) windows.emplace_back(new VideoWindow(WindowParams(*jo2, this), *this));
 	    }
 	}
     }
 
     // load signals
-    if(const JsonArray* ja = jo.getArray("signals"))
+    for(auto & obj : getPluginsType("signal_"))
     {
-	for(int index = 0; index < ja->size(); ++index)
-	{
-	    const JsonObject* jo2 = ja->getObject(index);
-	    if(jo2)
-	    {
-		PluginParams params(*jo2);
-		DEBUG("load signal: " << params.name);
+	PluginParams params(*obj);
+	DEBUG("load signal: " << params.name);
 
-    		if(params.config.isValid())
-    		{
-		    signals.emplace_back(new SignalPlugin(params, *this));
-		}
-		else
-		{
-		    ERROR("json config invalid");
-		}
-	    }
+    	if(params.config.isValid())
+    	{
+	    signals.emplace_back(new SignalPlugin(params, *this));
+	}
+	else
+	{
+	    ERROR("json config invalid");
 	}
     }
 
@@ -84,6 +77,48 @@ MainScreen::MainScreen(const JsonObject & jo) : DisplayWindow(Color::Black)
     }
 
     setVisible(true);
+}
+
+MainScreen::~MainScreen()
+{
+    for(auto & ptr : windows)
+	if(ptr) ptr->stopCapture();
+}
+
+const JsonObject* MainScreen::getPluginName(const std::string & name) const
+{
+    if(const JsonArray* ja = config->getArray("plugins"))
+    {
+        for(int index = 0; index < ja->size(); ++index)
+        {
+            if(const JsonObject* jo = ja->getObject(index))
+            {
+                if(name == jo->getString("name"))
+		    return jo;
+	    }
+	}
+    }
+
+    return nullptr;
+}
+
+std::list<const JsonObject*> MainScreen::getPluginsType(const std::string & type) const
+{
+    std::list<const JsonObject*> res;
+
+    if(const JsonArray* ja = config->getArray("plugins"))
+    {
+        for(int index = 0; index < ja->size(); ++index)
+        {
+            if(const JsonObject* jo = ja->getObject(index))
+            {
+                if(type == jo->getString("type").substr(0, type.length()))
+		    res.push_back(jo);
+	    }
+	}
+    }
+
+    return res;
 }
 
 const FontRender & MainScreen::fontRender(void) const
@@ -109,7 +144,7 @@ bool MainScreen::keyPressEvent(const KeySym & key)
     }
     if(key.keycode() == Key::ESCAPE)
     {
-        TermGUI::MessageBox msg(Settings::programName(), _("Exit from my super program?"),
+        TermGUI::MessageBox msg(Settings::programName(), _("Exit from program?"),
 				    TermGUI::ButtonOk | TermGUI::ButtonCancel, fontRender(), this);
         if(TermGUI::ButtonOk == msg.exec())
         {

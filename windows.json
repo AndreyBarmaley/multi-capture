@@ -4,100 +4,104 @@
     "font:file":	"terminus.ttf",
     "font:size":	"16",
     "font:blend":	"false",
+
     "gallery":	{
 	    "position":	[ 10, 10, 160, 740 ],
 	    "background": "navy"
 	},
-    "windows":
-	[
-	    {
-		"label:name":	"input1",
-		"label:color":	"yellow",
 
-		"position":	[694, 10, 320, 240],
+    "windows": [
+	{
+	    "label:name":	"input1",
+	    "label:color":	"yellow",
 
-		"capture":	{
-			    "name":	"capture_image",
-			    "config":	{
-					    "debug":    false,
-					    "file":     "/var/tmp/back.png",
-					    "tick":     3000,
-					    "static":   false,
-					    "scale":    true
-					}
-			}
-	    },
-	    {
-		"label:name":	"input2",
-		"label:color":	"yellow",
+	    "position":		[694, 10, 320, 240],
+	    "capture":		"cap_test1"
+	},
+	{
+	    "label:name":	"input2",
+	    "label:color":	"yellow",
 
-		"position":	[694, 260, 320, 240],
+	    "position":		[694, 260, 320, 240],
+	    "capture":		"cap_test2"
+	},
+	{
+	    "label:name":	"input3",
+	    "label:color":	"yellow",
 
-		"capture":	{
-			    "name":	"capture_image",
-			    "config":	{
-					    "debug":    false,
-					    "file":     "/var/tmp/tmp462501.jpg",
-					    "tick":     0,
-					    "static":   true,
-					    "scale":    true
-					}
-			}
-	    },
-	    {
-		"label:name":	"input3",
-		"label:color":	"yellow",
+	    "position":		[160, 10, 480, 320],
+	    "capture":		"cap_video0",
+	    "storage": 		"stor_video0"
+	},
+	{
+	    "label:name":	"input4",
+	    "label:color":	"transparent",
 
-		"position":	[160, 10, 480, 320],
+	    "position":		[180, 340, 480, 320],
+	    "capture":		"cap_rtsp",
+	    "storage": 		"stor_rtsp"
+	}
+    ],
 
-		"capture":	{
-			    "name":	"capture_ffmpeg",
-			    "config":	{
-					    "debug":    false,
-					    "device":   "/dev/video0",
-					    "format":   "video4linux2",
-					    "tick":     30,
-					    "scale":    true
-					}
-			},
-		"storage": {
-			    "name":	"storage_file",
-			    "config":	{
-					    "debug":  false,
-					    "format:description": "strftime",
-					    "format": "/var/tmp/input3/%Y%m%d_%H%M%S.png",
-					    "signals":	[ "mouse:click" ]
-					}
-			    }
-	    },
-	    {
-		"label:name":	"input4",
-		"label:color":	"transparent",
+    "plugins": [
+	{
+	    "name": 	"cap_test1",
+	    "type": 	"capture_image",
 
-		"position":	[180, 340, 480, 320],
+	    "debug":    false,
+	    "file":     "/var/tmp/back.png",
+	    "tick":     3000,
+	    "static":   false,
+	    "scale":    true
+	},
+	{
+	    "name": 	"cap_test2",
+	    "type": 	"capture_image",
 
-		"capture":	{
-			    "name":	"capture_ffmpeg",
-			    "config":	{
-					    "debug":    false,
-					    "device":   "rtsp://videocam:554/live1.sdp",
-					    "format":   "rtsp",
-					    "tick":     30,
-					    "init:timeout": 500000,
-					    "scale":    true
-					}
-			},
-		"storage": {
-			    "name":	"storage_file",
-			    "config":	{
-					    "debug":  true,
-					    "format:description": "strftime",
-					    "format": "/var/tmp/input4/%Y%m%d_%H%M%S.png",
-					    "signals":	[ "mouse:click" ]
-					}
-			    }
-	    }
-	],
-    "signals": [
-	]
+	    "debug":    false,
+	    "file":     "/var/tmp/tmp462501.jpg",
+	    "tick":     0,
+	    "static":   true,
+	    "scale":    true
+	},
+	{
+	    "name":	"cap_video0",
+	    "type":	"capture_ffmpeg",
+
+	    "debug":    false,
+	    "device":   "/dev/video0",
+	    "format":   "video4linux2",
+	    "tick":     30,
+	    "scale":    true
+	},
+	{
+	    "name":	"stor_video0",
+	    "type":	"storage_file",
+
+	    "debug":  false,
+	    "format:description": "strftime",
+	    "format": "/var/tmp/input3/%Y%m%d_%H%M%S.png",
+	    "signals":	[ "mouse:click" ]
+	},
+	{
+	    "name":	"cap_rtsp",
+	    "type":	"capture_ffmpeg",
+
+	    "debug":    false,
+	    "device":   "rtsp://videocam:554/live1.sdp",
+	    "format":   "rtsp",
+	    "tick":     30,
+	    "init:timeout": 500000,
+	    "scale":    true
+	},
+	{
+	    "name":	"stor_strp",
+	    "type":	"storage_file",
+
+	    "debug":  true,
+	    "format:description": "strftime",
+	    "format": "/var/tmp/input4/%Y%m%d_%H%M%S.png",
+	    "signals":	[ "mouse:click" ]
+	}
+    ]
 }

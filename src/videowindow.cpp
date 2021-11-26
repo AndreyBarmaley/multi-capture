@@ -1,8 +1,8 @@
 /***************************************************************************
- *   Copyright (C) 2018 by FlyCapture team <public.irkutsk@gmail.com>      *
+ *   Copyright (C) 2018 by MultiCapture team <public.irkutsk@gmail.com>    *
  *                                                                         *
- *   Part of the FlyCapture engine:                                        *
- *   https://github.com/AndreyBarmaley/fly-capture                         *
+ *   Part of the MultiCapture engine:                                      *
+ *   https://github.com/AndreyBarmaley/multi-capture                       *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU General Public License as published by  *
@@ -29,7 +29,7 @@
 using namespace std::chrono_literals;
 
 /* WindowParams */
-WindowParams::WindowParams(const JsonObject & jo)
+WindowParams::WindowParams(const JsonObject & jo, const MainScreen* main)
 {
     labelName = jo.getString("label:name");
     labelColor = JsonUnpack::color(jo, "label:color", Color::Red);
@@ -38,10 +38,10 @@ WindowParams::WindowParams(const JsonObject & jo)
 
     const JsonObject* jo2 = nullptr;
 
-    jo2 = jo.getObject("capture");
+    jo2 = main->getPluginName(jo.getString("capture"));
     if(jo2) capture = PluginParams(*jo2);
 
-    jo2 = jo.getObject("storage");
+    jo2 = main->getPluginName(jo.getString("storage"));
     if(jo2) storage = PluginParams(*jo2);
 }
 
@@ -267,4 +267,10 @@ bool VideoWindow::keyPressEvent(const KeySym & key)
     }
 
     return false;
+}
+
+void VideoWindow::stopCapture(void)
+{
+    if(capturePlugin)
+	capturePlugin->stopThread();
 }

@@ -1,8 +1,8 @@
 /***************************************************************************
- *   Copyright (C) 2018 by FlyCapture team <public.irkutsk@gmail.com>      *
+ *   Copyright (C) 2018 by MultiCapture team <public.irkutsk@gmail.com>    *
  *                                                                         *
- *   Part of the FlyCapture engine:                                        *
- *   https://github.com/AndreyBarmaley/fly-capture                         *
+ *   Part of the MultiCapture engine:                                      *
+ *   https://github.com/AndreyBarmaley/multi-capture                       *
  *                                                                         *
  *   This program is free software; you can redistribute it and/or modify  *
  *   it under the terms of the GNU General Public License as published by  *
@@ -36,7 +36,8 @@ class GalleryWindow;
 
 class MainScreen : public DisplayWindow
 {
-    Color                    colorBack;
+    const JsonObject*   config;
+    Color               colorBack;
 
     std::list< std::unique_ptr<VideoWindow> > windows;
     std::list< std::unique_ptr<SignalPlugin> > signals;
@@ -52,10 +53,14 @@ protected:
 
 public:
     MainScreen(const JsonObject &);
+    ~MainScreen();
 
     void		renderWindow(void) override;
     const FontRender &  fontRender(void) const;
     void		addImageGallery(const Surface &, const std::string &);
+
+    const JsonObject*            getPluginName(const std::string & name) const;
+    std::list<const JsonObject*> getPluginsType(const std::string & type) const;
 };
 
 #endif
