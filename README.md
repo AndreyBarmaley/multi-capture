@@ -1,4 +1,4 @@
-# fly-capture
+# multi-capture
 Multi-window system for capturing video from multiple resources
 
 Each video source is described by its own section in the configuration file.  
