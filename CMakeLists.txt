@@ -18,6 +18,7 @@ set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DBUILD_DEBUG")
 
 add_subdirectory(engine)
 include(engine/libswe.cmake)
+set_target_properties(libswe PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
 set(MULTICAP_SOURCE
     src/multi_capture.cpp
@@ -33,9 +34,6 @@ include_directories(engine src)
 add_executable(MultiCapture ${MULTICAP_SOURCE})
 
 target_link_libraries(MultiCapture libswe Threads::Threads)
-
-set_target_properties(libswe PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
-set_target_properties(libswe PROPERTIES ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 set_target_properties(MultiCapture PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_subdirectory(src/plugins)
