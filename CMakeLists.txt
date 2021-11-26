@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.14)
 
-project(FlyCapture VERSION 20210201.1)
+project(MultiCapture VERSION 20210201.1)
+
+option(WITH_FLYCAP_PLUGIN "enable capture plugin for FlyCapture SDK" OFF)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)
@@ -17,7 +19,7 @@ add_subdirectory(engine)
 
 include(engine/libswe.cmake)
 
-set(FLYCAP_SOURCE
+set(MULTICAP_SOURCE
     src/fly_capture.cpp
     src/gallerywindow.cpp
     src/mainscreen.cpp
@@ -26,9 +28,9 @@ set(FLYCAP_SOURCE
     src/videowindow.cpp)
 
 include_directories(engine src)
-add_executable(FlyCapture ${FLYCAP_SOURCE})
+add_executable(MultiCapture ${MULTICAP_SOURCE})
 
-target_link_libraries(FlyCapture libswe)
-set_target_properties(FlyCapture PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(MultiCapture libswe)
+set_target_properties(MultiCapture PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
 
 add_subdirectory(src/plugins)

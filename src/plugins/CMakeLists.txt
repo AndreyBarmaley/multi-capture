@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.14)
 
-project(FlyCapturePlugins VERSION 20210201.1)
+project(MultiCapturePlugins VERSION 20210201.1)
 
 add_subdirectory(capture_ffmpeg)
 add_subdirectory(capture_image)
@@ -8,6 +8,10 @@ add_subdirectory(capture_script)
 add_subdirectory(storage_file)
 add_subdirectory(storage_script)
 add_subdirectory(signal_test_thread)
+
+if(WITH_FLYCAP_PLUGIN)
+    add_subdirectory(capture_flycap)
+endif()
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
     add_subdirectory(capture_fireware)
