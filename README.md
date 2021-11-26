@@ -11,9 +11,9 @@ capture_fireware - read fireware stream
 capture_ffmpeg - read ffmpeg stream  
 
 # signal plugins
-signal_dbus_signal - get signal from dbus  
-signal_input_event - get signal from linux /dev/input  
+![signal_dbus_event](https://github.com/AndreyBarmaley/multi-capture/wiki/Signal-plugins#signal_dbus_event) - get signal from dbus  
+![signal_input_event](https://github.com/AndreyBarmaley/multi-capture/wiki/Signal-plugins#signal_input_event) - get signal from linux /dev/input  
 
 # storage plugins
-storage_file - save screenshot to file  
-storage_script - save screenshot with script action  
+![storage_file](https://github.com/AndreyBarmaley/multi-capture/wiki/Storage-plugins#storage_file) - save screenshot to file  
+![storage_script](https://github.com/AndreyBarmaley/multi-capture/wiki/Storage-plugins#storage_script) - save screenshot with script action  
