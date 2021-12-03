@@ -5,10 +5,15 @@
     "font:size":	"16",
     "font:blend":	"false",
 
+    "datetime": {
+        "strftime:format": "%H:%M:%S",
+        "position": [ 950, 10 ]
+    },
+
     "gallery":	{
 	    "position":	[ 10, 10, 160, 740 ],
 	    "background": "navy"
-	},
+    },
 
     "windows": [
 	{

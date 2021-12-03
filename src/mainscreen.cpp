@@ -76,6 +76,15 @@ MainScreen::MainScreen(const JsonObject & jo) : DisplayWindow(Color::Black), con
 	gallery.reset(new GalleryWindow(pos.toPoint(), pos.toSize(), back, *this));
     }
 
+    if(jo.isObject("datetime"))
+    {
+	const JsonObject* jo2 = jo.getObject("datetime");
+	dateTimeFormat = jo2->getString("strftime:format", "%H:%M:%S");
+	dateTimePos = JsonUnpack::point(*jo2, "position");
+	if(dateTimeFormat.size())
+	    dateTimeTexture = Display::renderText(fontRender(), String::strftime(dateTimeFormat), Color::Yellow);
+    }
+
     setVisible(true);
 }
 
@@ -129,6 +138,7 @@ const FontRender & MainScreen::fontRender(void) const
 void MainScreen::renderWindow(void)
 {
     renderClear(colorBack);
+    if(dateTimeTexture.isValid()) renderTexture(dateTimeTexture, dateTimePos);
 }
 
 bool MainScreen::keyPressEvent(const KeySym & key)
@@ -235,6 +245,11 @@ bool MainScreen::showWindowPositionsDialog(const Window* win, Rect & res)
 
 void MainScreen::tickEvent(u32 ms)
 {
+    if(dateTimeTexture.isValid() &&
+        ttDateTime.check(ms, 300))
+    {
+	dateTimeTexture = Display::renderText(fontRender(), String::strftime(dateTimeFormat), Color::Yellow);
+    }
 }
 
 void MainScreen::addImageGallery(const Surface & sf, const std::string & label)

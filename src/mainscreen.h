@@ -38,6 +38,10 @@ class MainScreen : public DisplayWindow
 {
     const JsonObject*   config;
     Color               colorBack;
+    Texture             dateTimeTexture;
+    std::string         dateTimeFormat;
+    Point               dateTimePos;
+    TickTrigger         ttDateTime;
 
     std::list< std::unique_ptr<VideoWindow> > windows;
     std::list< std::unique_ptr<SignalPlugin> > signals;

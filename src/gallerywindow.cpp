@@ -37,7 +37,7 @@ GalleryItem::GalleryItem(const Surface & sf, const std::string & label, GalleryW
     if(main)
     {
 	renderToolTip(label, main->fontRender(), Color::Black, Color::Wheat, Color::MidnightBlue);
-	Display::renderText(main->fontRender(), Systems::basename(label), Color::Yellow, thumbnail, Point(5, 5), AlignLeft, AlignBottom);
+	Display::renderText(main->fontRender(), Systems::basename(label), Color::Yellow, thumbnail, Point(5, thumbnail.height() - 5), AlignLeft, AlignBottom);
     }
 
     setVisible(true);
