@@ -19,8 +19,9 @@ You can also set a signal plugin and an storage action for each video source.
 ![storage_file](https://github.com/AndreyBarmaley/multi-capture/wiki/Storage-plugins#storage_file) - save screenshot to file  
 ![storage_script](https://github.com/AndreyBarmaley/multi-capture/wiki/Storage-plugins#storage_script) - save screenshot with script action  
 
-# example
+# example for 9 sources
 ![screenshot](https://user-images.githubusercontent.com/8620726/149245731-87088444-fe9f-4b65-8409-1d1a9e957501.png)  
+config file
 ```
 {
     "display:fullscreen": false,
