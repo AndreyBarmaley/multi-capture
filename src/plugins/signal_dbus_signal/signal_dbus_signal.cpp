@@ -20,6 +20,7 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
+#include <list>
 #include <cstring>
 
 #include "../../settings.h"
@@ -35,11 +36,10 @@ struct signal_dbus_signal_t
     bool        is_thread;
     bool        is_debug;
     int         delay;
-    std::string system_signal;
     std::string dbus_name;
     std::string dbus_object;
     std::string dbus_interface;
-    std::string dbus_signal;
+    StringList  dbus_signals;
     std::string dbus_autostart;
     DBusConnection* dbus_conn;
 
@@ -51,10 +51,9 @@ struct signal_dbus_signal_t
         is_thread = true;
         is_debug = false;
         delay = 100;
-        system_signal.clear();
 	dbus_name.clear();
 	dbus_interface.clear();
-	dbus_signal.clear();
+	dbus_signals.clear();
 	dbus_conn = NULL;
     }
 };
@@ -72,7 +71,7 @@ const char* signal_dbus_signal_get_name(void)
 
 int signal_dbus_signal_get_version(void)
 {
-    return 20211121;
+    return 20220128;
 }
 
 int signal_dbus_autostart(signal_dbus_signal_t* st)
@@ -145,7 +144,6 @@ void* signal_dbus_signal_init(const JsonObject & config)
     st->is_used = true;
     st->is_debug = config.getBoolean("debug", false);
     st->delay = config.getInteger("delay", 100);
-    st->system_signal = config.getString("signal");
     bool dbusIsSystem = config.getBoolean("dbus:system", false);
  
     // dbus init
@@ -172,8 +170,9 @@ void* signal_dbus_signal_init(const JsonObject & config)
     st->dbus_name = config.getString("dbus:name", "org.test.dbus");
     st->dbus_object = config.getString("dbus:object", "/org/test/dbus/object");
     st->dbus_interface = config.getString("dbus:interface", "org.test.dbus.interface");
-    st->dbus_signal = config.getString("dbus:signal", "test_signal");
     st->dbus_autostart = config.getString("dbus:autostart");
+    st->dbus_signals = config.getStdList<std::string>("dbus:signals");
+    st->dbus_signals.emplace_back(config.getString("dbus:signal", "test_signal"));
 
     int ret = dbus_bus_request_name(st->dbus_conn, st->dbus_name.c_str(), DBUS_NAME_FLAG_REPLACE_EXISTING , &dbus_err);
     if(dbus_error_is_set(&dbus_err))
@@ -208,14 +207,13 @@ void* signal_dbus_signal_init(const JsonObject & config)
         return NULL;
     }
 
-    DEBUG("params: " << "signal = " << st->system_signal);
     DEBUG("params: " << "delay = " << st->delay);
     DEBUG("params: " << "dbus:system" << " = " << String::Bool(dbusIsSystem));
     DEBUG("params: " << "dbus:name" << " = " << st->dbus_name);
     DEBUG("params: " << "dbus:object" << " = " << st->dbus_object);
     DEBUG("params: " << "dbus:interface" << " = " << st->dbus_interface);
     DEBUG("params: " << "dbus:match" << " = " << matchForm);
-    DEBUG("params: " << "dbus:signal" << " = " << st->dbus_signal);
+    DEBUG("params: " << "dbus:signals" << " = " << "[ " << st->dbus_signals.join(", ") << " ]");
 
     if(dbus_error_is_set(&dbus_err))
 	dbus_error_free(&dbus_err);
@@ -250,8 +248,6 @@ int signal_dbus_signal_action(void* ptr)
     signal_dbus_signal_t* st = static_cast<signal_dbus_signal_t*>(ptr);
     if(st->is_debug) DEBUG("version: " << signal_dbus_signal_get_version());
 
-    bool sendSignal = false;
-
     // loop listening for signals being emmitted
     while(st->is_thread)
     {
@@ -266,39 +262,33 @@ int signal_dbus_signal_action(void* ptr)
 	    continue;
 	}
 
-	// check if the message is a signal from the correct interface and with the correct name
-	if(dbus_message_is_signal(dbus_msg, st->dbus_interface.c_str(), st->dbus_signal.c_str()))
+        for(auto & dbus_signal : st->dbus_signals)
 	{
-	    if(st->is_debug) DEBUG("dbus_message_is_signal: " << "true");
-	    sendSignal = true;
+            // check if the message is a signal from the correct interface and with the correct name
+	    if(dbus_message_is_signal(dbus_msg, st->dbus_interface.c_str(), dbus_signal.c_str()))
+	    {
+	        if(st->is_debug) DEBUG("dbus_message_is_signal: " << dbus_signal);
 
-	    /*
-	    DBusMessageIter dbus_args;
+                // send signal to display scene
+                DisplayScene::pushEvent(NULL, ActionBackSignal, & dbus_signal);
 
-	    // read the parameters
-	    if(! dbus_message_iter_init(msg, &args))
-        	fprintf(stderr, "Message Has No Parameters\n");
-	    else
-	    if(DBUS_TYPE_STRING != dbus_message_iter_get_arg_type(&args))
-		fprintf(stderr, "Argument is not string!\n");
-	    else
-        	dbus_message_iter_get_basic(&args, &sigvalue);
-	    */
-	}
-	else
-	if(st->is_debug)
-	{
-	    DEBUG("dbus_message_is_signal: " << "false");
-	}
+	        /*
+	            DBusMessageIter dbus_args;
+
+	            // read the parameters
+	            if(! dbus_message_iter_init(msg, &args))
+        	        fprintf(stderr, "Message Has No Parameters\n");
+	            else
+	            if(DBUS_TYPE_STRING != dbus_message_iter_get_arg_type(&args))
+		        fprintf(stderr, "Argument is not string!\n");
+	            else
+        	        dbus_message_iter_get_basic(&args, &sigvalue);
+	        */
+	    }
+        }
 
 	// free the message
 	dbus_message_unref(dbus_msg);
-
-	if(sendSignal)
-	{
-            DisplayScene::pushEvent(NULL, ActionBackSignal, & st->dbus_signal);
-            sendSignal = false;
-	}
 
 	if(st->is_thread)
 	  Tools::delay(st->delay);
