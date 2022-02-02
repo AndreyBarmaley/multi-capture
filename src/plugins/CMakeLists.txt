@@ -13,6 +13,10 @@ if(WITH_FLYCAP_PLUGIN)
     add_subdirectory(capture_flycap)
 endif()
 
+if(WITH_DECKLINK_PLUGIN)
+    add_subdirectory(capture_decklink)
+endif()
+
 if(${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
     add_subdirectory(capture_fireware)
     add_subdirectory(signal_dbus_signal)

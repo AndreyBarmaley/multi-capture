@@ -66,8 +66,8 @@ protected:
 public:
     VideoWindow(const WindowParams &, Window & parent);
 
-    const std::string &	name(void) const { return labelName; }
-    bool		isName(const std::string & str) const { return 0 == labelName.compare(str); }
+    const std::string &	label(void) const { return labelName; }
+    bool		isLabel(const std::string & str) const { return 0 == labelName.compare(str); }
 
     void		renderWindow(void) override;
     void		stopCapture(void);

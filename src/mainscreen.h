@@ -43,6 +43,11 @@ class MainScreen : public DisplayWindow
     Point               dateTimePos;
     TickTrigger         ttDateTime;
 
+    size_t		uid;
+    size_t		pid;
+    std::string		username;
+    std::string		home;
+
     std::list< std::unique_ptr<VideoWindow> > windows;
     std::list< std::unique_ptr<SignalPlugin> > signals;
 
@@ -65,6 +70,11 @@ public:
 
     const JsonObject*            getPluginName(const std::string & name) const;
     std::list<const JsonObject*> getPluginsType(const std::string & type) const;
+
+    size_t		getUid(void) const { return uid; }
+    size_t		getPid(void) const { return pid; }
+    const std::string &	getUserName(void) const { return username; }
+    const std::string &	getHome(void) const { return home; }
 };
 
 #endif

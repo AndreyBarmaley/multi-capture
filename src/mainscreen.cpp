@@ -20,6 +20,11 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
+#include <sys/types.h>
+
+#include <pwd.h>
+#include <unistd.h>
+
 #include <algorithm>
 
 #include "settings.h"
@@ -28,7 +33,7 @@
 #include "videowindow.h"
 #include "mainscreen.h"
 
-MainScreen::MainScreen(const JsonObject & jo) : DisplayWindow(Color::Black), config(&jo)
+MainScreen::MainScreen(const JsonObject & jo) : DisplayWindow(Color::Black), config(&jo), uid(0), pid(0)
 {
     colorBack = jo.getString("display:background");
     auto tmp = new FontRenderTTF(jo.getString("font:file"), jo.getInteger("font:size", 12), jo.getBoolean("font:blend", false) ? SWE::RenderBlended : SWE::RenderSolid);
@@ -83,6 +88,16 @@ MainScreen::MainScreen(const JsonObject & jo) : DisplayWindow(Color::Black), con
 	dateTimePos = JsonUnpack::point(*jo2, "position");
 	if(dateTimeFormat.size())
 	    dateTimeTexture = Display::renderText(fontRender(), String::strftime(dateTimeFormat), Color::Yellow);
+    }
+
+    pid = getpid();
+    if(auto user = Systems::environment("USER"))
+    {
+	if(struct passwd* st = getpwnam(user))
+	{
+	    uid = st->pw_uid;
+	    home.assign(st->pw_dir);
+	}
     }
 
     setVisible(true);
@@ -167,14 +182,14 @@ bool MainScreen::keyPressEvent(const KeySym & key)
     {
 	UnicodeList list;
 	for(auto & win : windows)
-	    list.emplace_back(win->name());
+	    list.emplace_back(win->label());
 
         TermGUI::ListBox box("Edit Window Params", list, 4, fontRender(), this);
 
 
         if(box.exec())
 	{
-	    auto ptr = std::find_if(windows.begin(), windows.end(), [&](auto & win){ return win->isName(box.result()); });
+	    auto ptr = std::find_if(windows.begin(), windows.end(), [&](auto & win){ return win->isLabel(box.result()); });
 	    if(ptr != windows.end())
 	    {
 		Rect newPosition;

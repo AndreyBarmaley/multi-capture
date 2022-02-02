@@ -3,6 +3,7 @@ cmake_minimum_required(VERSION 3.14)
 project(MultiCapture VERSION 20210201.1)
 
 option(WITH_FLYCAP_PLUGIN "enable capture plugin for FlyCapture SDK" OFF)
+option(WITH_DECKLINK_PLUGIN "enable capture plugin for DeckLink SDK" OFF)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED True)

@@ -89,6 +89,23 @@ VideoWindow::VideoWindow(const WindowParams & params, Window & parent) : Window(
 	
 	    if(storage.config.isValid())
 	    {
+		if(storage.config.isString("format"))
+		{
+		    auto format = storage.config.getString("format");
+		    if(! format.empty())
+		    {
+			if(const MainScreen* scr = dynamic_cast<const MainScreen*>(& parent))
+			{
+			    format = String::replace(format, "${uid}", scr->getUid());
+			    format = String::replace(format, "${pid}", scr->getPid());
+			    format = String::replace(format, "${user}", scr->getUserName());
+			    format = String::replace(format, "${home}", scr->getHome());
+			}
+			format = String::replace(format, "${label}", label());
+			storage.config.addString("format", format);
+		    }
+		}
+
 		storagePlugin.reset(new StoragePlugin(storage, *this));
 
 		std::string signal = storagePlugin->findSignal("tick:");
