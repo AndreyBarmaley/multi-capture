@@ -20,7 +20,8 @@ You can also set a signal plugin and an storage action for each video source.
 ![storage_script](https://github.com/AndreyBarmaley/multi-capture/wiki/Storage-plugins#storage_script) - save screenshot with script action  
 
 # example for 9 sources
-![screenshot](https://user-images.githubusercontent.com/8620726/149245731-87088444-fe9f-4b65-8409-1d1a9e957501.png)  
+![screenshot](https://user-images.githubusercontent.com/8620726/150244073-7deda86c-92e9-4b02-9644-215706135363.png)  
+
 config file
 ```
 {
