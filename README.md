@@ -38,72 +38,63 @@ config file
                 "label:name":   "endo203",
                 "label:color":  "red",
                 "position":     [10, 10, 320, 240],
-                "capture":      "endo203cap",
-                "storage":      "label2stor"
+                "plugins":      [ "endo203cap", "label2stor" ]
             },
             {
                 "window:skip":  false,
                 "label:name":   "endo208",
                 "label:color":  "red",
                 "position":     [340, 10, 320, 240],
-                "capture":      "endo208cap",
-                "storage":      "label2stor"
+                "plugins":      [ "endo208cap", "label2stor" ]
             },
             {
                 "window:skip":  false,
                 "label:name":   "endo209",
                 "label:color":  "red",
                 "position":     [670, 10, 320, 240],
-                "capture":      "endo209cap",
-                "storage":      "label2stor"
+                "plugins":      [ "endo209cap", "label2stor" ]
             },
             {
                 "window:skip":  false,
                 "label:name":   "endo210",
                 "label:color":  "red",
                 "position":     [10, 260, 320, 240],
-                "capture":      "endo210cap",
-                "storage":      "label2stor"
+                "plugins":      [ "endo210cap", "label2stor" ]
             },
             {
                 "window:skip":  false,
                 "label:name":   "endo211",
                 "label:color":  "red",
                 "position":     [340, 260, 320, 240],
-                "capture":      "endo211cap",
-                "storage":      "label2stor"
+                "plugins":      [ "endo211cap", "label2stor" ]
             },
             {
                 "window:skip":  false,
                 "label:name":   "endo214",
                 "label:color":  "red",
                 "position":     [670, 260, 320, 240],
-                "capture":      "endo214cap",
-                "storage":      "label2stor"
+                "plugins":      [ "endo214cap", "label2stor" ]
             },
             {
                 "window:skip":  false,
                 "label:name":   "endo215",
                 "label:color":  "red",
                 "position":     [10, 510, 320, 240],
-                "capture":      "endo215cap",
-                "storage":      "label2stor"
+                "plugins":      [ "endo215cap", "label2stor" ]
             },
             {
                 "window:skip":  false,
                 "label:name":   "endo152",
                 "label:color":  "red",
                 "position":     [340, 510, 320, 240],
-                "capture":      "endo152cap",
-                "storage":      "label2stor"
+                "plugins":      [ "endo152cap", "label2stor" ]
             },
             {
                 "window:skip":  false,
                 "label:name":   "xray152",
                 "label:color":  "red",
                 "position":     [670, 510, 320, 240],
-                "capture":      "xray152cap",
-                "storage":      "label2stor"
+                "plugins":      [ "xray152cap", "label2stor" ]
             }
         ],
 
