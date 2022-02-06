@@ -79,6 +79,21 @@ PluginParams::PluginParams(const JsonObject & jo)
     }
 }
 
+bool PluginParams::isCapture(void) const
+{
+    return type.substr(0, 8) == "capture_";
+}
+
+bool PluginParams::isStorage(void) const
+{
+    return type.substr(0, 8) == "storage_";
+}
+
+bool PluginParams::isSignal(void) const
+{
+    return type.substr(0, 7) == "signal_";
+}
+
 /* BasePlugin */
 BasePlugin::BasePlugin(const PluginParams & params, Window & win) : PluginParams(params), lib(nullptr), data(nullptr),
     fun_get_name(nullptr), fun_get_version(nullptr), fun_init(nullptr), fun_quit(nullptr),
@@ -112,7 +127,11 @@ BasePlugin::~BasePlugin()
     if(lib)
     {
         if(fun_quit && data)
+	{
 	    fun_quit(data);
+	    data = nullptr;
+	}
+
 	Systems::closeLib(lib);
     }
 }
@@ -192,7 +211,7 @@ int BasePlugin::pluginVersion(void) const
 
 /* CapturePlugin */
 CapturePlugin::CapturePlugin(const PluginParams & params, Window & win) : BasePlugin(params, win),
-    fun_frame_action(nullptr), fun_get_surface(nullptr)
+    tickPeriod(0), scaleImage(false), fun_frame_action(nullptr), fun_get_surface(nullptr)
 {
     blue = generateBlueScreen(_("error"));
 
@@ -202,7 +221,10 @@ CapturePlugin::CapturePlugin(const PluginParams & params, Window & win) : BasePl
 
 	thread = std::thread([this](){
             if(this->data)
+	    {
                 this->fun_quit(this->data);
+		this->data = nullptr;
+	    }
 
 	    this->threadInitialize = false;
             DEBUG("thread init start: " << this->name);
@@ -222,11 +244,26 @@ CapturePlugin::CapturePlugin(const PluginParams & params, Window & win) : BasePl
 	    }
         });
     }
+
+    tickPeriod = params.config.getInteger("tick");
+    if(tickPeriod < 0) tickPeriod = 0;
+    scaleImage = params.config.getBoolean("scale");
 }
 
 CapturePlugin::~CapturePlugin()
 {
     joinThread();
+}
+
+bool CapturePlugin::isScaleImage(void) const
+{
+    return scaleImage;
+}
+
+bool CapturePlugin::isTickEvent(u32 ms) const
+{
+    return 0 <= tickPeriod &&
+            ttCapture.check(ms, tickPeriod);
 }
 
 Surface CapturePlugin::generateBlueScreen(const std::string & label) const
@@ -325,7 +362,7 @@ const Surface & CapturePlugin::getSurface(void)
 
 /* StoragePlugin */
 StoragePlugin::StoragePlugin(const PluginParams & params, Window & win) : BasePlugin(params, win),
-    fun_store_action(nullptr), fun_set_surface(nullptr)
+    tickPeriod(0), fun_store_action(nullptr), fun_set_surface(nullptr)
 {
     signals = params.config.getStdList<std::string>("signals");
     std::transform(signals.begin(), signals.end(), signals.begin(), String::toLower);
@@ -334,7 +371,10 @@ StoragePlugin::StoragePlugin(const PluginParams & params, Window & win) : BasePl
     {
 	thread = std::thread([this](){
             if(this->data)
+	    {
                 this->fun_quit(this->data);
+		this->data = nullptr;
+	    }
 
             this->threadInitialize = false;
             DEBUG("thread init start: " << this->name);
@@ -353,6 +393,13 @@ StoragePlugin::StoragePlugin(const PluginParams & params, Window & win) : BasePl
                 std::this_thread::sleep_for(3000ms);
 	    }
         });
+    }
+
+    std::string signal = findSignal("tick:");
+    if(signal.size())
+    {
+        tickPeriod = String::toInt(signal.substr(5, signal.size() - 5));
+	if(tickPeriod < 0) tickPeriod = 0;
     }
 }
 
@@ -407,6 +454,12 @@ bool StoragePlugin::loadFunctions(void)
     return true;
 }
 
+bool StoragePlugin::isTickEvent(u32 ms) const
+{
+    return 0 <= tickPeriod &&
+            ttStorage.check(ms, tickPeriod);
+}
+
 int StoragePlugin::storeAction(void)
 {
     if(threadInitialize && fun_store_action && data)
@@ -424,7 +477,7 @@ int StoragePlugin::storeAction(void)
 		thread.join();
             thread = std::thread([this](){
                 int err = this->fun_store_action(this->data);
-                if(0 == err) DisplayScene::pushEvent(this->parent, ActionStoreComplete, nullptr);
+                if(0 == err) DisplayScene::pushEvent(this->parent, ActionStoreComplete, this);
                 this->threadAction = false;
                 this->threadResult = err;
             });
@@ -433,6 +486,20 @@ int StoragePlugin::storeAction(void)
     }
 
     return 1;
+}
+
+bool StoragePlugin::signalBackAction(const std::string & name, const Surface & back)
+{
+    std::string found = findSignal(name);
+
+    if(found.size())
+    {
+        setSurface(back);
+	storeAction();
+	return true;
+    }
+
+    return false;
 }
 
 int StoragePlugin::setSurface(const Surface & sf)
@@ -499,7 +566,7 @@ std::string StoragePlugin::findSignal(const std::string & str) const
 
 /* SignalPlugin */
 SignalPlugin::SignalPlugin(const PluginParams & params, Window & win)
-    : BasePlugin(params, win), fun_action(nullptr), fun_stop_thread(nullptr)
+    : BasePlugin(params, win), fun_action(nullptr), fun_stop_thread(nullptr), fun_get_signal(nullptr)
 {
     if(loadFunctions())
     {
@@ -525,6 +592,14 @@ SignalPlugin::~SignalPlugin()
     joinThread();
 }
 
+std::string SignalPlugin::signalName(void) const
+{
+    if(fun_get_signal && data)
+        return fun_get_signal(data);
+
+    return std::string();
+}
+
 bool SignalPlugin::loadFunctions(void)
 {
     if(! isValid())
@@ -545,6 +620,15 @@ bool SignalPlugin::loadFunctions(void)
     str = std::string(type).append("_stop_thread");
     fun_stop_thread = (void (*)(void*)) Systems::procAddressLib(lib, str);
     if(! fun_stop_thread)
+    {
+        ERROR("cannot load function: " << str);
+        return false;
+    }
+
+    // fun_get_signal
+    str = std::string(type).append("_get_signal");
+    fun_get_signal = (const std::string & (*)(void*)) Systems::procAddressLib(lib, str);
+    if(! fun_get_signal)
     {
         ERROR("cannot load function: " << str);
         return false;

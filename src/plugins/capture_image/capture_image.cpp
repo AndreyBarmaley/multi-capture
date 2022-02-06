@@ -28,30 +28,26 @@ extern "C" {
 
 struct capture_image_t
 {
-    bool 	is_used;
     bool 	is_debug;
     bool 	is_static;
     std::string file;
     std::string lock;
     Surface 	surface;
 
-    capture_image_t() : is_used(false), is_debug(false), is_static(true) {}
-    
+    capture_image_t() : is_debug(false), is_static(true) {}
+    ~capture_image_t()
+    {
+	clear();
+    }
+
     void clear(void)
     {
-	is_used = false;
 	is_debug = false;
 	is_static = true;
 	file.clear();
 	surface.reset();
     }
 };
-
-#ifndef CAPTURE_IMAGE_SPOOL
-#define CAPTURE_IMAGE_SPOOL 16
-#endif
-
-capture_image_t capture_image_vals[CAPTURE_IMAGE_SPOOL];
 
 const char* capture_image_get_name(void)
 {
@@ -60,44 +56,33 @@ const char* capture_image_get_name(void)
 
 int capture_image_get_version(void)
 {
-    return 20211121;
+    return 20220205;
 }
 
 void* capture_image_init(const JsonObject & config)
 {
     VERBOSE("version: " << capture_image_get_version());
 
-    int devindex = 0;
-    for(; devindex < CAPTURE_IMAGE_SPOOL; ++devindex)
-        if(! capture_image_vals[devindex].is_used) break;
+    auto ptr = std::make_unique<capture_image_t>();
 
-    if(CAPTURE_IMAGE_SPOOL <= devindex)
-    {
-        ERROR("spool is busy, max limit: " << CAPTURE_IMAGE_SPOOL);
-        return NULL;
-    }
+    ptr->is_debug = config.getBoolean("debug", false);
+    ptr->is_static = config.getBoolean("static", true);
+    ptr->file = config.getString("file");
+    ptr->lock = config.getString("lock");
 
-    DEBUG("spool index: " << devindex);
-    capture_image_t* st = & capture_image_vals[devindex];
+    DEBUG("params: " << "static = " << (ptr->is_static ? "true" : "false"));
+    DEBUG("params: " << "file = " << ptr->file);
+    DEBUG("params: " << "lock = " << ptr->lock);
 
-    st->is_used = true;
-    st->is_debug = config.getBoolean("debug", false);
-    st->is_static = config.getBoolean("static", true);
-    st->file = config.getString("file");
-    st->lock = config.getString("lock");
-
-    DEBUG("params: " << "static = " << (st->is_static ? "true" : "false"));
-    DEBUG("params: " << "file = " << st->file);
-    DEBUG("params: " << "lock = " << st->lock);
-
-    return st;
+    return ptr.release();
 }
 
 void capture_image_quit(void* ptr)
 {
     capture_image_t* st = static_cast<capture_image_t*>(ptr);
     if(st->is_debug) DEBUG("version: " << capture_image_get_version());
-    st->clear();
+
+    delete st;
 }
 
 int capture_image_frame_action(void* ptr)

@@ -32,10 +32,10 @@ extern "C" {
 
 struct signal_dbus_signal_t
 {
-    bool	is_used;
     bool        is_thread;
     bool        is_debug;
     int         delay;
+    std::string signal;
     std::string dbus_name;
     std::string dbus_object;
     std::string dbus_interface;
@@ -43,26 +43,126 @@ struct signal_dbus_signal_t
     std::string dbus_autostart;
     DBusConnection* dbus_conn;
 
-    signal_dbus_signal_t() : is_used(false), is_thread(true), is_debug(false), delay(100), dbus_conn(NULL) {}
+    signal_dbus_signal_t() : is_thread(true), is_debug(false), delay(100), dbus_conn(nullptr) {}
+    ~signal_dbus_signal_t()
+    {
+	clear();
+    }
+
+    bool init(bool isSystem)
+    {
+	// dbus init
+	DBusError dbus_err;
+	dbus_error_init(&dbus_err);
+
+	// connect to the bus and check for errors
+	dbus_conn = dbus_bus_get((isSystem ? DBUS_BUS_SYSTEM : DBUS_BUS_SESSION), &dbus_err);
+        if(dbus_error_is_set(&dbus_err))
+	{
+	    ERROR("dbus_bus_get: " << dbus_err.message);
+	    dbus_error_free(&dbus_err);
+	    return false;
+	}
+
+	if(! dbus_conn)
+    	    return false;
+
+	int ret = dbus_bus_request_name(dbus_conn, dbus_name.c_str(), DBUS_NAME_FLAG_REPLACE_EXISTING , &dbus_err);
+	if(dbus_error_is_set(&dbus_err))
+	{
+	    ERROR("dbus_bus_request_name: " << dbus_err.message);
+	    dbus_error_free(&dbus_err);
+    	    return false;
+	}
+
+	if(is_debug)
+	{
+	    VERBOSE("dbus_bus_request_name: ret code: " << ret);
+	}
+
+	if(0 > ret)
+    	    return false;
+
+	// add a rule for which messages we want to see
+	std::string matchForm = StringFormat("type='%1',interface='%2'").arg("signal").arg(dbus_interface);
+	DEBUG("math form: " << matchForm);
+
+	dbus_bus_add_match(dbus_conn, matchForm.c_str(), &dbus_err);
+	dbus_connection_flush(dbus_conn);
+	if(dbus_error_is_set(&dbus_err))
+	{
+	    ERROR("match error: " << dbus_err.message);
+	    dbus_error_free(&dbus_err);
+    	    return false;
+	}
+
+	if(dbus_error_is_set(&dbus_err))
+	    dbus_error_free(&dbus_err);
+
+	return true;
+    }
+
+    int dbusSignalAutostart(void)
+    {
+	// create a new method call and check for errors
+	DBusMessage* msg = dbus_message_new_method_call(dbus_name.c_str(), dbus_object.c_str(), dbus_interface.c_str(), dbus_autostart.c_str());
+
+	if(! msg)
+	{
+	    ERROR("message is null");
+	    return 0;
+	}
+
+	// send message and get a handle for a reply
+	DBusPendingCall* pending;
+	if(!dbus_connection_send_with_reply (dbus_conn, msg, &pending, -1  /* -1 is default timeout */))
+	{
+	    ERROR("out of memory");
+	    return 0;
+	}
+
+	if(! pending)
+	{
+	    ERROR("pending call is null");
+	    return 0;
+	}
+
+	dbus_connection_flush(dbus_conn);
+	if(is_debug) VERBOSE("request sent");
+
+	// free message
+	dbus_message_unref(msg);
+
+	// block until we recieve a reply
+	dbus_pending_call_block(pending);
+
+	// get the reply message
+	msg = dbus_pending_call_steal_reply(pending);
+	if(! msg)
+	{
+	    ERROR("reply is null");
+	    return 0;
+	}
+
+	// free the pending message handle
+	dbus_pending_call_unref(pending);
+	dbus_message_unref(msg);
+
+      return 1;
+    }
 
     void clear(void)
     {
-        is_used = false;
         is_thread = true;
         is_debug = false;
         delay = 100;
+	signal.clear();
 	dbus_name.clear();
 	dbus_interface.clear();
 	dbus_signals.clear();
-	dbus_conn = NULL;
+	dbus_conn = nullptr;
     }
 };
-
-#ifndef DBUS_SIGNAL_SPOOL
-#define DBUS_SIGNAL_SPOOL 16
-#endif
-
-signal_dbus_signal_t signal_dbus_signal_vals[DBUS_SIGNAL_SPOOL];
 
 const char* signal_dbus_signal_get_name(void)
 {
@@ -71,167 +171,48 @@ const char* signal_dbus_signal_get_name(void)
 
 int signal_dbus_signal_get_version(void)
 {
-    return 20220128;
-}
-
-int signal_dbus_autostart(signal_dbus_signal_t* st)
-{
-    if(st->is_debug) DEBUG("version: " << signal_dbus_signal_get_version());
-
-    // create a new method call and check for errors
-    DBusMessage* msg = dbus_message_new_method_call(st->dbus_name.c_str(), st->dbus_object.c_str(), st->dbus_interface.c_str(), st->dbus_autostart.c_str());
-
-    if(NULL == msg)
-    {
-	ERROR("message is null");
-	return 0;
-    }
-
-    // send message and get a handle for a reply
-    DBusPendingCall* pending;
-    if(!dbus_connection_send_with_reply (st->dbus_conn, msg, &pending, -1  /* -1 is default timeout */))
-    {
-	ERROR("out of memory");
-	return 0;
-    }
-
-    if(NULL == pending)
-    {
-	ERROR("pending call is null");
-	return 0;
-    }
-    dbus_connection_flush(st->dbus_conn);
-    if(st->is_debug) VERBOSE("request sent");
-
-    // free message
-    dbus_message_unref(msg);
-
-    // block until we recieve a reply
-    dbus_pending_call_block(pending);
-
-    // get the reply message
-    msg = dbus_pending_call_steal_reply(pending);
-    if(NULL == msg)
-    {
-	ERROR("reply is null");
-	return 0;
-    }
-
-    // free the pending message handle
-    dbus_pending_call_unref(pending);
-    dbus_message_unref(msg);
-
-   return 1;
+    return 20220205;
 }
 
 void* signal_dbus_signal_init(const JsonObject & config)
 {
     VERBOSE("version: " << signal_dbus_signal_get_version());
 
-    int devindex = 0;
-    for(; devindex < DBUS_SIGNAL_SPOOL; ++devindex)
-        if(! signal_dbus_signal_vals[devindex].is_used) break;
+    auto ptr = std::make_unique<signal_dbus_signal_t>();
 
-    if(DBUS_SIGNAL_SPOOL <= devindex)
-    {
-        ERROR("spool is busy, max limit: " << DBUS_SIGNAL_SPOOL);
-        return NULL;
-    }
-
-    DEBUG("spool index: " << devindex);
-    signal_dbus_signal_t* st = & signal_dbus_signal_vals[devindex];
-
-    st->is_used = true;
-    st->is_debug = config.getBoolean("debug", false);
-    st->delay = config.getInteger("delay", 100);
+    ptr->is_debug = config.getBoolean("debug", false);
+    ptr->delay = config.getInteger("delay", 100);
     bool dbusIsSystem = config.getBoolean("dbus:system", false);
  
-    // dbus init
-    DBusError dbus_err;
-    dbus_error_init(&dbus_err);
+    ptr->dbus_name = config.getString("dbus:name", "org.test.dbus");
+    ptr->dbus_object = config.getString("dbus:object", "/org/test/dbus/object");
+    ptr->dbus_interface = config.getString("dbus:interface", "org.test.dbus.interface");
+    ptr->dbus_autostart = config.getString("dbus:autostart");
+    ptr->dbus_signals = config.getStdList<std::string>("dbus:signals");
+    ptr->dbus_signals.emplace_back(config.getString("dbus:signal", "test_signal"));
 
-    // connect to the bus and check for errors
-    st->dbus_conn = dbus_bus_get((dbusIsSystem ? DBUS_BUS_SYSTEM : DBUS_BUS_SESSION), &dbus_err);
-    if(dbus_error_is_set(&dbus_err))
-    {
-	st->is_used = false;
-	ERROR("dbus_bus_get: " << dbus_err.message);
-	dbus_error_free(&dbus_err);
-        return NULL;
-    }
+    if(! ptr->init(dbusIsSystem))
+	return nullptr;
 
-    if(NULL == st->dbus_conn)
-    {
-	st->is_used = false;
-	ERROR("dbus_bus_get: " << "is null");
-        return NULL;
-    }
-
-    st->dbus_name = config.getString("dbus:name", "org.test.dbus");
-    st->dbus_object = config.getString("dbus:object", "/org/test/dbus/object");
-    st->dbus_interface = config.getString("dbus:interface", "org.test.dbus.interface");
-    st->dbus_autostart = config.getString("dbus:autostart");
-    st->dbus_signals = config.getStdList<std::string>("dbus:signals");
-    st->dbus_signals.emplace_back(config.getString("dbus:signal", "test_signal"));
-
-    int ret = dbus_bus_request_name(st->dbus_conn, st->dbus_name.c_str(), DBUS_NAME_FLAG_REPLACE_EXISTING , &dbus_err);
-    if(dbus_error_is_set(&dbus_err))
-    {
-	st->is_used = false;
-	ERROR("dbus_bus_request_name: " << dbus_err.message);
-	dbus_error_free(&dbus_err);
-        return NULL;
-    }
-
-    if(0 > ret)
-    {
-	st->is_used = false;
-	ERROR("dbus_bus_request_name: " << ret);
-        return NULL;
-    }
-
-    if(st->is_debug)
-    {
-	VERBOSE("dbus_bus_request_name: " << ret);
-    }
-
-    // add a rule for which messages we want to see
-    std::string matchForm = StringFormat("type='%1',interface='%2'").arg("signal").arg(st->dbus_interface);
-    dbus_bus_add_match(st->dbus_conn, matchForm.c_str(), &dbus_err);
-    dbus_connection_flush(st->dbus_conn);
-    if(dbus_error_is_set(&dbus_err))
-    {
-	st->is_used = false;
-	ERROR("match error: " << dbus_err.message);
-	dbus_error_free(&dbus_err);
-        return NULL;
-    }
-
-    DEBUG("params: " << "delay = " << st->delay);
+    DEBUG("params: " << "delay = " << ptr->delay);
     DEBUG("params: " << "dbus:system" << " = " << String::Bool(dbusIsSystem));
-    DEBUG("params: " << "dbus:name" << " = " << st->dbus_name);
-    DEBUG("params: " << "dbus:object" << " = " << st->dbus_object);
-    DEBUG("params: " << "dbus:interface" << " = " << st->dbus_interface);
-    DEBUG("params: " << "dbus:match" << " = " << matchForm);
-    DEBUG("params: " << "dbus:signals" << " = " << "[ " << st->dbus_signals.join(", ") << " ]");
+    DEBUG("params: " << "dbus:name" << " = " << ptr->dbus_name);
+    DEBUG("params: " << "dbus:object" << " = " << ptr->dbus_object);
+    DEBUG("params: " << "dbus:interface" << " = " << ptr->dbus_interface);
+    DEBUG("params: " << "dbus:signals" << " = " << "[ " << ptr->dbus_signals.join(", ") << " ]");
 
-    if(dbus_error_is_set(&dbus_err))
-	dbus_error_free(&dbus_err);
+    if(ptr->dbus_autostart.size())
+	ptr->dbusSignalAutostart();
 
-    if(st->dbus_autostart.size())
-	signal_dbus_autostart(st);
-
-    DEBUG("init complete");
-
-    //st->is_used = true;
-    return st;
+    return ptr.release();
 }
 
 void signal_dbus_signal_quit(void* ptr)
 {
     signal_dbus_signal_t* st = static_cast<signal_dbus_signal_t*>(ptr);
     if(st->is_debug) DEBUG("version: " << signal_dbus_signal_get_version());
-    st->clear();
+
+    delete st;
 }
 
 void signal_dbus_signal_stop_thread(void* ptr)
@@ -256,7 +237,7 @@ int signal_dbus_signal_action(void* ptr)
     	DBusMessage* dbus_msg = dbus_connection_pop_message(st->dbus_conn);
 
 	// loop again if we haven't read a message
-	if(NULL == dbus_msg)
+	if(! dbus_msg)
 	{
 	    Tools::delay(st->delay);
 	    continue;
@@ -269,8 +250,10 @@ int signal_dbus_signal_action(void* ptr)
 	    {
 	        if(st->is_debug) DEBUG("dbus_message_is_signal: " << dbus_signal);
 
-                // send signal to display scene
-                DisplayScene::pushEvent(NULL, ActionBackSignal, & dbus_signal);
+                st->signal = dbus_signal;
+
+		// send signal to display scene
+                DisplayScene::pushEvent(nullptr, ActionSignalBack, st);
 
 	        /*
 	            DBusMessageIter dbus_args;
@@ -295,6 +278,14 @@ int signal_dbus_signal_action(void* ptr)
     }
 
     return 0;
+}
+
+const std::string & signal_dbus_signal_get_signal(void* ptr)
+{
+    signal_dbus_signal_t* st = static_cast<signal_dbus_signal_t*>(ptr);
+    if(st->is_debug) DEBUG("version: " << signal_dbus_signal_get_version());
+
+    return st->signal;
 }
 
 #ifdef __cplusplus

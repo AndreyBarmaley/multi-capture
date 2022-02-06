@@ -28,18 +28,20 @@ extern "C" {
 
 struct storage_script_t
 {
-    bool        is_used;
     bool        is_debug;
     std::string label;
     std::string exec;
     std::string image;
     Surface	surface;
 
-    storage_script_t() : is_used(false), is_debug(false) {}
-
+    storage_script_t() : is_debug(false) {}
+    ~storage_script_t()
+    {
+	clear();
+    }
+    
     void clear(void)
     {
-        is_used = false;
         is_debug = false;
         label.clear();
         exec.clear();
@@ -48,12 +50,6 @@ struct storage_script_t
     }
 };
 
-#ifndef STORAGE_SCRIPT_SPOOL
-#define STORAGE_SCRIPT_SPOOL 16
-#endif
-
-storage_script_t storage_script_vals[STORAGE_SCRIPT_SPOOL];
-
 const char* storage_script_get_name(void)
 {
     return "storage_script";
@@ -61,42 +57,31 @@ const char* storage_script_get_name(void)
 
 int storage_script_get_version(void)
 {
-    return 20211121;
+    return 20220205;
 }
 
 void* storage_script_init(const JsonObject & config)
 {
     VERBOSE("version: " << storage_script_get_version());
 
-    int devindex = 0;
-    for(; devindex < STORAGE_SCRIPT_SPOOL; ++devindex)
-        if(! storage_script_vals[devindex].is_used) break;
+    auto ptr = std::make_unique<storage_script_t>();
 
-    if(STORAGE_SCRIPT_SPOOL <= devindex)
-    {
-        ERROR("spool is busy, max limit: " << STORAGE_SCRIPT_SPOOL);
-        return NULL;
-    }
+    ptr->is_debug = config.getBoolean("debug", false);
+    ptr->exec = config.getString("exec");
+    ptr->image = config.getString("image");
 
-    DEBUG("spool index: " << devindex);
-    storage_script_t* st = & storage_script_vals[devindex];
+    DEBUG("params: " << "exec = " << ptr->exec);
+    DEBUG("params: " << "image = " << ptr->image);
 
-    st->is_debug = config.getBoolean("debug", false);
-    st->exec = config.getString("exec");
-    st->image = config.getString("image");
-
-    DEBUG("params: " << "exec = " << st->exec);
-    DEBUG("params: " << "image = " << st->image);
-
-    st->is_used = true;
-    return st;
+    return ptr.release();
 }
 
 void storage_script_quit(void* ptr)
 {
     storage_script_t* st = static_cast<storage_script_t*>(ptr);
     if(st->is_debug) DEBUG("version: " << storage_script_get_version());
-    st->clear();
+
+    delete st;
 }
 
 int storage_script_store_action(void* ptr)
@@ -134,7 +119,6 @@ int storage_script_store_action(void* ptr)
     {
         ERROR("exec not found: " << st->exec);
     }
-
 
     return -1;
 }

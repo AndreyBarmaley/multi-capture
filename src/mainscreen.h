@@ -45,8 +45,10 @@ class MainScreen : public DisplayWindow
 
     size_t		uid;
     size_t		pid;
+    size_t              sid;
     std::string		username;
     std::string		home;
+    std::string         session;
 
     std::list< std::unique_ptr<VideoWindow> > windows;
     std::list< std::unique_ptr<SignalPlugin> > signals;
@@ -59,6 +61,7 @@ class MainScreen : public DisplayWindow
 protected:
     bool		keyPressEvent(const KeySym &) override;
     void                tickEvent(u32 ms) override;
+    bool                userEvent(int, void*) override;
 
 public:
     MainScreen(const JsonObject &);
@@ -70,11 +73,14 @@ public:
 
     const JsonObject*            getPluginName(const std::string & name) const;
     std::list<const JsonObject*> getPluginsType(const std::string & type) const;
+    const SignalPlugin*		 findSignalData(void*) const;
 
     size_t		getUid(void) const { return uid; }
     size_t		getPid(void) const { return pid; }
+    size_t		getSid(void) const { return sid; }
     const std::string &	getUserName(void) const { return username; }
     const std::string &	getHome(void) const { return home; }
+    const std::string &	getSession(void) const { return session; }
 };
 
 #endif

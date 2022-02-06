@@ -36,6 +36,10 @@ struct signal_test_thread_t
     std::string signal;
 
     signal_test_thread_t() : is_debug(false), is_thread(true), delay(1000) {}
+    ~signal_test_thread_t()
+    {
+	clear();
+    }
 
     void clear(void)
     {
@@ -46,8 +50,6 @@ struct signal_test_thread_t
     }
 };
 
-signal_test_thread_t signal_test_thread_vals;
-
 const char* signal_test_thread_get_name(void)
 {
     return "signal_test";
@@ -55,30 +57,31 @@ const char* signal_test_thread_get_name(void)
 
 int signal_test_thread_get_version(void)
 {
-    return 20211121;
+    return 20220205;
 }
 
 void* signal_test_thread_init(const JsonObject & config)
 {
     VERBOSE("version: " << signal_test_thread_get_version());
 
-    signal_test_thread_t* st = & signal_test_thread_vals;
+    auto ptr = std::make_unique<signal_test_thread_t>();
 
-    st->is_debug = config.getBoolean("debug", false);
-    st->delay = config.getInteger("delay", 100);
-    st->signal = config.getString("signal");
+    ptr->is_debug = config.getBoolean("debug", false);
+    ptr->delay = config.getInteger("delay", 100);
+    ptr->signal = config.getString("signal");
  
-    DEBUG("params: " << "signal = " << st->signal);
-    DEBUG("params: " << "delay = " << st->delay);
+    DEBUG("params: " << "signal = " << ptr->signal);
+    DEBUG("params: " << "delay = " << ptr->delay);
 
-    return st;
+    return ptr.release();
 }
 
 void signal_test_thread_quit(void* ptr)
 {
     signal_test_thread_t* st = static_cast<signal_test_thread_t*>(ptr);
     if(st->is_debug) DEBUG("version: " << signal_test_thread_get_version());
-    st->clear();
+
+    delete st;
 }
 
 void signal_test_thread_stop_thread(void* ptr)
@@ -100,11 +103,19 @@ int signal_test_thread_action(void* ptr)
     {
 	VERBOSE("FIXME thread action");
 
-        DisplayScene::pushEvent(NULL, ActionBackSignal, & st->signal);
+        DisplayScene::pushEvent(nullptr, ActionSignalBack, st);
 	Tools::delay(st->delay);
     }
 
     return 0;
+}
+
+const std::string & signal_test_thread_get_signal(void* ptr)
+{
+    signal_test_thread_t* st = static_cast<signal_test_thread_t*>(ptr);
+    if(st->is_debug) DEBUG("version: " << signal_test_thread_get_version());
+
+    return st->signal;
 }
 
 #ifdef __cplusplus

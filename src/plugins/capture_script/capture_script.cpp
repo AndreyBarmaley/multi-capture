@@ -28,29 +28,25 @@ extern "C" {
 
 struct capture_script_t
 {
-    bool        is_used;
     bool        is_debug;
     std::string exec;
     std::string result;
     Surface     surface;
 
-    capture_script_t() : is_used(false), is_debug(false) {}
+    capture_script_t() : is_debug(false) {}
+    ~capture_script_t()
+    {
+	clear();
+    }
 
     void clear(void)
     {
-        is_used = false;
         is_debug = false;
         exec.clear();
         result.clear();
         surface.reset();
     }
 };
-
-#ifndef CAPTURE_SCRIPT_SPOOL
-#define CAPTURE_SCRIPT_SPOOL 16
-#endif
-
-capture_script_t capture_script_vals[CAPTURE_SCRIPT_SPOOL];
 
 const char* capture_script_get_name(void)
 {
@@ -59,42 +55,30 @@ const char* capture_script_get_name(void)
 
 int capture_script_get_version(void)
 {
-    return 20211121;
+    return 20220205;
 }
 
 void* capture_script_init(const JsonObject & config)
 {
     VERBOSE("version: " << capture_script_get_version());
 
-    int devindex = 0;
-    for(; devindex < CAPTURE_SCRIPT_SPOOL; ++devindex)
-        if(! capture_script_vals[devindex].is_used) break;
+    auto ptr = std::make_unique<capture_script_t>();
 
-    if(CAPTURE_SCRIPT_SPOOL <= devindex)
-    {
-        ERROR("spool is busy, max limit: " << CAPTURE_SCRIPT_SPOOL);
-        return NULL;
-    }
+    ptr->is_debug = config.getBoolean("debug", false);
+    ptr->exec = config.getString("exec");
+    ptr->result = config.getString("result");
 
-    DEBUG("spool index: " << devindex);
-    capture_script_t* st = & capture_script_vals[devindex];
+    DEBUG("params: " << "exec = " << ptr->exec);
+    DEBUG("params: " << "result = " << ptr->result);
 
-    st->is_used = true;
-    st->is_debug = config.getBoolean("debug", false);
-    st->exec = config.getString("exec");
-    st->result = config.getString("result");
-
-    DEBUG("params: " << "exec = " << st->exec);
-    DEBUG("params: " << "result = " << st->result);
-
-    return st;
+    return ptr.release();
 }
 
 void capture_script_quit(void* ptr)
 {
     capture_script_t* st = static_cast<capture_script_t*>(ptr);
     if(st->is_debug) DEBUG("version: " << capture_script_get_version());
-    st->clear();
+    delete st;
 }
 
 int capture_script_frame_action(void* ptr)

@@ -23,6 +23,7 @@
 #ifndef _CNA_VIDEO_WINDOW_
 #define _CNA_VIDEO_WINDOW_
 
+#include <list>
 #include <memory>
 
 #include "settings.h"
@@ -36,24 +37,21 @@ struct WindowParams
     Color		labelColor;
     Color		fillColor;
     Rect		position;
-    PluginParams	capture;
-    PluginParams	storage;
+    bool                skip;
 
-    WindowParams() {}
+    std::list<PluginParams> plugins;
+
+    WindowParams() : skip(false) {}
     WindowParams(const JsonObject &, const MainScreen*);
 };
 
 class VideoWindow : public Window, protected WindowParams
 {
     std::unique_ptr<CapturePlugin> capturePlugin;
-    std::unique_ptr<StoragePlugin> storagePlugin;
+    std::list< std::unique_ptr<StoragePlugin> > storagePlugins;
 
     Surface		back;
-    TickTrigger		ttStorage, ttCapture;
-
-    bool		capturePluginParamScale;
-    int			capturePluginParamTick;
-    int			signalPluginParamTick;
+    PluginParams*       captureParams;
 
 protected:
     void		tickEvent(u32 ms) override;

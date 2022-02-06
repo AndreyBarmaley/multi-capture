@@ -26,6 +26,7 @@
 #include <unistd.h>
 
 #include <algorithm>
+#include <exception>
 
 #include "settings.h"
 #include "plugins.h"
@@ -33,7 +34,7 @@
 #include "videowindow.h"
 #include "mainscreen.h"
 
-MainScreen::MainScreen(const JsonObject & jo) : DisplayWindow(Color::Black), config(&jo), uid(0), pid(0)
+MainScreen::MainScreen(const JsonObject & jo) : DisplayWindow(Color::Black), config(&jo), uid(0), pid(0), sid(0)
 {
     colorBack = jo.getString("display:background");
     auto tmp = new FontRenderTTF(jo.getString("font:file"), jo.getInteger("font:size", 12), jo.getBoolean("font:blend", false) ? SWE::RenderBlended : SWE::RenderSolid);
@@ -51,11 +52,21 @@ MainScreen::MainScreen(const JsonObject & jo) : DisplayWindow(Color::Black), con
 	    const JsonObject* jo2 = ja->getObject(index);
 	    if(jo2)
 	    {
-		bool skip = jo2->getBoolean("window:skip", false);
-		if(! skip) windows.emplace_back(new VideoWindow(WindowParams(*jo2, this), *this));
+		try
+                {
+		    auto ptr = new VideoWindow(WindowParams(*jo2, this), *this);
+		    windows.emplace_back(ptr);
+                }
+                catch(const std::invalid_argument & err)
+                {
+                    ERROR(err.what());
+                }
 	    }
 	}
     }
+
+    if(windows.empty())
+        throw std::runtime_error("active windows not found");
 
     // load signals
     for(auto & obj : getPluginsType("signal_"))
@@ -77,8 +88,7 @@ MainScreen::MainScreen(const JsonObject & jo) : DisplayWindow(Color::Black), con
     {
 	const JsonObject* jo2 = jo.getObject("gallery");
 	Rect pos = JsonUnpack::rect(*jo2, "position");
-	Color back = jo2->getString("background");
-	gallery.reset(new GalleryWindow(pos.toPoint(), pos.toSize(), back, *this));
+	gallery.reset(new GalleryWindow(pos.toPoint(), pos.toSize(), *jo2, *this));
     }
 
     if(jo.isObject("datetime"))
@@ -107,6 +117,12 @@ MainScreen::~MainScreen()
 {
     for(auto & ptr : windows)
 	if(ptr) ptr->stopCapture();
+}
+
+const SignalPlugin* MainScreen::findSignalData(void* data) const
+{
+    auto it = std::find_if(signals.begin(), signals.end(), [=](auto & ptr){ return ptr->isData(data); });
+    return it != signals.end() ? it->get() : nullptr;
 }
 
 const JsonObject* MainScreen::getPluginName(const std::string & name) const
@@ -265,6 +281,42 @@ void MainScreen::tickEvent(u32 ms)
     {
 	dateTimeTexture = Display::renderText(fontRender(), String::strftime(dateTimeFormat), Color::Yellow);
     }
+}
+
+bool MainScreen::userEvent(int act, void* data)
+{
+    switch(act)
+    {
+        case ActionProgramExit:
+        {
+	    setVisible(false);
+	    return true;
+        }
+
+        case ActionSessionReset:
+            if(gallery) gallery->clear();
+            if(auto ptr = static_cast<const SessionIdName*>(data))
+            {
+                sid = ptr->id;
+                session = ptr->name;
+                // broadcast event
+	        return false;
+            }
+            break;
+
+        case ActionStoreComplete:
+            if(auto plugin = static_cast<StoragePlugin*>(data))
+            {
+                SurfaceLabel sl = plugin->getSurfaceLabel();
+                std::string label = StringFormat("%1:/%2").arg(plugin->pluginName()).arg(sl.label());
+                addImageGallery(sl.surface(), label);
+            }
+            return true;
+
+        default: break;
+    }
+
+    return false;
 }
 
 void MainScreen::addImageGallery(const Surface & sf, const std::string & label)

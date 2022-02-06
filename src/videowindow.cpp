@@ -21,6 +21,7 @@
  ***************************************************************************/
 
 #include <chrono>
+#include <exception>
 #include <algorithm>
 
 #include "mainscreen.h"
@@ -29,46 +30,73 @@
 using namespace std::chrono_literals;
 
 /* WindowParams */
-WindowParams::WindowParams(const JsonObject & jo, const MainScreen* main)
+WindowParams::WindowParams(const JsonObject & jo, const MainScreen* main) : skip(false)
 {
     labelName = jo.getString("label:name");
+    skip = jo.getBoolean("window:skip", false);
     labelColor = JsonUnpack::color(jo, "label:color", Color::Red);
     fillColor = JsonUnpack::color(jo, "window:fill", Color::Navy);
     position = JsonUnpack::rect(jo, "position");
 
     const JsonObject* jo2 = nullptr;
 
-    jo2 = main->getPluginName(jo.getString("capture"));
-    if(jo2) capture = PluginParams(*jo2);
+    // parse plugins
+    if(const JsonArray* ja = jo.getArray("plugins"))
+    {
+        for(int ii = 0; ii < ja->size(); ++ii)
+        {
+            auto name = ja->getString(ii);
 
-    jo2 = main->getPluginName(jo.getString("storage"));
-    if(jo2) storage = PluginParams(*jo2);
+            if(nullptr != (jo2 = main->getPluginName(name)))
+            {
+                plugins.emplace_back(*jo2);
+            }
+            else
+            {
+                ERROR("plugin not found: " << name);
+            }
+        }
+    }
+
+    // old interface
+    if(plugins.empty())
+    {
+        jo2 = main->getPluginName(jo.getString("capture"));
+        if(jo2) plugins.emplace_back(*jo2);
+
+        jo2 = main->getPluginName(jo.getString("storage"));
+        if(jo2) plugins.emplace_back(*jo2);
+    }
 }
 
 /* VideoWindow */
 VideoWindow::VideoWindow(const WindowParams & params, Window & parent) : Window(params.position, params.position, & parent),
-    WindowParams(params), capturePluginParamScale(false), capturePluginParamTick(0), signalPluginParamTick(0)
+    WindowParams(params), captureParams(nullptr)
 {
     if(labelName.empty())
 	labelName = String::hex(Window::id());
+
+    if(params.skip)
+        throw std::invalid_argument("skip window");
 
     resetState(FlagModality);
     setState(FlagKeyHandle);
 
     // init capture plugin
-    if(Systems::isFile(capture.file))
+    auto it = std::find_if(plugins.begin(), plugins.end(), [](auto & val){ return val.isCapture(); });
+    if(it == plugins.end())
+        throw std::invalid_argument("capture plugin not found");
+
+    captureParams = & (*it);
+
+    if(Systems::isFile(captureParams->file))
     {
-	DEBUG(labelName << " plugin: " << capture.name);
-	
-	if(capture.config.isValid())
+	DEBUG(labelName << " plugin: " << captureParams->name);
+
+	if(captureParams->config.isValid())
 	{
-	    capture.config.addArray("window:size", JsonPack::size( size() ));
-	    capturePlugin.reset(new CapturePlugin(capture, *this));
-
-	    capturePluginParamScale = capture.config.getBoolean("scale");
-	    capturePluginParamTick = capture.config.getInteger("tick");
-
-	    if(capturePluginParamTick < 0) capturePluginParamTick = 0;
+	    captureParams->config.addArray("window:size", JsonPack::size( size() ));
+	    capturePlugin.reset(new CapturePlugin(*captureParams, *this));
 	}
 	else
 	{
@@ -77,12 +105,20 @@ VideoWindow::VideoWindow(const WindowParams & params, Window & parent) : Window(
     }
     else
     {
-	ERROR("capture plugin not found: " << capture.file);
+	ERROR("capture plugin not found: " << captureParams->file);
     }
 
-    // init storage plugin
-    if(storage.file.size())
+    // init storage plugins
+    for(auto & plugin : plugins)
     {
+        if(! plugin.isStorage())
+            continue;
+
+        auto & storage = plugin;
+
+        if(storage.file.empty())
+            continue;
+
 	if(Systems::isFile(storage.file))
 	{
 	    DEBUG(labelName << " plugin: " << storage.name);
@@ -98,21 +134,17 @@ VideoWindow::VideoWindow(const WindowParams & params, Window & parent) : Window(
 			{
 			    format = String::replace(format, "${uid}", scr->getUid());
 			    format = String::replace(format, "${pid}", scr->getPid());
+			    format = String::replace(format, "${sid}", scr->getSid());
 			    format = String::replace(format, "${user}", scr->getUserName());
 			    format = String::replace(format, "${home}", scr->getHome());
+			    format = String::replace(format, "${session}", scr->getSession());
 			}
 			format = String::replace(format, "${label}", label());
 			storage.config.addString("format", format);
 		    }
 		}
 
-		storagePlugin.reset(new StoragePlugin(storage, *this));
-
-		std::string signal = storagePlugin->findSignal("tick:");
-		if(signal.size())
-		{
-		    signalPluginParamTick = String::toInt(signal.substr(5, signal.size() - 5));
-		}
+		storagePlugins.emplace_back(new StoragePlugin(storage, *this));
 	    }
 	}
 	else
@@ -138,20 +170,21 @@ void VideoWindow::tickEvent(u32 ms)
 {
     if(capturePlugin)
     {
-	if(0 <= capturePluginParamTick &&
-	    ttCapture.check(ms, capturePluginParamTick))
+	if(capturePlugin->isTickEvent(ms))
 	{
 	    capturePlugin->frameAction();
 	}
 
 	// internal signal: tick:timeout
-	if(storagePlugin && capturePlugin->isInitComplete() && storagePlugin->isInitComplete())
+	if(capturePlugin->isInitComplete())
 	{
-	    if(0 <= signalPluginParamTick &&
-                ttStorage.check(ms, signalPluginParamTick))
-	    {
-		storagePlugin->setSurface(back);
-		pushEventAction(ActionBackStore, this, nullptr);
+            for(auto & plugin : storagePlugins)
+            {
+	        if(plugin && plugin->isInitComplete() && plugin->isTickEvent(ms))
+	        {
+		    plugin->setSurface(back);
+		    plugin->storeAction();
+                }
 	    }
 	}
     }
@@ -170,45 +203,29 @@ bool VideoWindow::userEvent(int act, void* data)
 	    // unload dl
 	    capturePlugin.reset();
 	    std::this_thread::sleep_for(100ms);
-	    capturePlugin.reset(new CapturePlugin(capture, *this));
+	    if(captureParams)
+                capturePlugin.reset(new CapturePlugin(*captureParams, *this));
             return true;
 
-	case ActionBackSignal:
-	    if(data && storagePlugin && capturePlugin->isInitComplete())
+	case ActionSignalBack:
+	    // data is SignalPlugin::data
+	    if(data && capturePlugin->isInitComplete())
 	    {
-		const std::string* str = static_cast<const std::string*>(data);
-		std::string signal = storagePlugin->findSignal(*str);
+		const MainScreen* scr = dynamic_cast<const MainScreen*>(parent());
+		const SignalPlugin* signalPlugin = scr ? scr->findSignalData(data) : nullptr;
 
-		if(signal.size())
+		if(signalPlugin)
 		{
-		    storagePlugin->setSurface(back);
-		    storagePlugin->storeAction();
+                    for(auto & plugin : storagePlugins)
+                        if(plugin) plugin->signalBackAction(signalPlugin->signalName(), back);
+		}
+                else
+		{
+		    ERROR("ActionSignalBack: signal plugin not found, data: " << String::pointer(data));
 		}
 	    }
 	    // broadcast signal
 	    return false;
-
-	case ActionBackStore:
-	    if(storagePlugin)
-	    {
-		storagePlugin->storeAction();
-		return true;
-	    }
-	    break;
-
-	case ActionStoreComplete:
-	    if(storagePlugin)
-	    {
-		MainScreen* win = static_cast<MainScreen*>(parent());
-		if(win)
-		{
-		    SurfaceLabel sl = storagePlugin->getSurfaceLabel();
-		    std::string label = StringFormat("%1:/%2").arg(storagePlugin->pluginName()).arg(sl.label());
-		    win->addImageGallery(sl.surface(), label);
-		}
-		return true;
-	    }
-	    break;
 
 	default: break;
     }
@@ -225,7 +242,7 @@ void VideoWindow::renderSurface(void)
 	    Rect rt1 = back.rect();
 	    Rect rt2 = rect();
 
-	    if(capturePluginParamScale)
+	    if(capturePlugin->isScaleImage())
 		Display::renderSurface(back, rt1, Display::texture(), rt2 + Window::position());
 	    else
 	    {
@@ -246,18 +263,20 @@ void VideoWindow::renderSurface(void)
 bool VideoWindow::mousePressEvent(const ButtonEvent & coord)
 {
     // internal signal: mouse:click
-    if(capturePlugin && capturePlugin->isInitComplete() &&
-	storagePlugin && coord.isButtonLeft())
+    if(capturePlugin && capturePlugin->isInitComplete() && coord.isButtonLeft())
     {
-	std::string signal = storagePlugin->findSignal("mouse:click");
-
-	if(signal.size())
+        for(auto & plugin : storagePlugins)
 	{
-	    DEBUG("receive signal: " << signal);
-	    storagePlugin->setSurface(back);
-	    pushEventAction(ActionBackStore, this, nullptr);
-	    return true;
-	}
+            std::string signal = plugin ? plugin->findSignal("mouse:click") : "";
+
+	    if(signal.size())
+	    {
+	        DEBUG("receive signal: " << signal);
+	        plugin->setSurface(back);
+	        plugin->storeAction();
+	        return true;
+	    }
+        }
     }
 
     return false;
@@ -266,20 +285,23 @@ bool VideoWindow::mousePressEvent(const ButtonEvent & coord)
 bool VideoWindow::keyPressEvent(const KeySym & key)
 {
     // internal signal: key:keyname
-    if(capturePlugin && capturePlugin->isInitComplete() && storagePlugin)
+    if(capturePlugin && capturePlugin->isInitComplete())
     {
-	std::string signal = storagePlugin->findSignal("key:");
-
-	if(signal.size())
+        for(auto & plugin : storagePlugins)
 	{
-	    std::string keystr = String::toUpper(signal.substr(4, signal.size() - 4));
-	    if(keystr == key.keyname())
+	    std::string signal = plugin ? plugin->findSignal("key:") : "";
+
+	    if(signal.size())
 	    {
-		DEBUG("receive signal: " << signal);
-		storagePlugin->setSurface(back);
-		pushEventAction(ActionBackStore, this, nullptr);
-		return true;
-	    }
+	        std::string keystr = String::toUpper(signal.substr(4, signal.size() - 4));
+	        if(keystr == key.keyname())
+	        {
+		    DEBUG("receive signal: " << signal);
+		    plugin->setSurface(back);
+		    plugin->storeAction();
+		    return true;
+	        }
+            }
 	}
     }
 

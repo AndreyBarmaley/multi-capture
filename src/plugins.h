@@ -58,6 +58,10 @@ struct PluginParams
 
     PluginParams() {}
     PluginParams(const JsonObject &);
+
+    bool                isCapture(void) const;
+    bool                isSignal(void) const;
+    bool                isStorage(void) const;
 };
 
 class BasePlugin : protected PluginParams
@@ -65,7 +69,6 @@ class BasePlugin : protected PluginParams
 protected:
     void*		lib;
     void*	        data;
-    TickTrigger		tt;
 
     const char*		(*fun_get_name) (void);
     int			(*fun_get_version) (void);
@@ -92,6 +95,7 @@ public:
 
     bool                isValid(void) const { return lib; }
     bool		isInitComplete(void) const { return threadInitialize; }
+    bool		isData(void* ptr) const { return ptr && data == ptr; }
 
     void                stopThread(void);
 };
@@ -99,6 +103,10 @@ public:
 class CapturePlugin : public BasePlugin
 {
     Surface		blue;
+
+    TickTrigger         ttCapture;
+    int                 tickPeriod;
+    bool                scaleImage;
 
 protected:
     int			(*fun_frame_action) (void*);
@@ -113,11 +121,16 @@ public:
 
     int			frameAction(void);
     const Surface &	getSurface(void);
+    bool		isTickEvent(u32 ms) const;
+    bool		isScaleImage(void) const;
 };
 
 class StoragePlugin : public BasePlugin
 {
     StringList		signals;
+
+    TickTrigger		ttStorage;
+    int                 tickPeriod;
 
 protected:
     int			(*fun_store_action) (void*);
@@ -131,11 +144,13 @@ public:
     StoragePlugin(const PluginParams &, Window &);
     ~StoragePlugin();
 
+    bool		signalBackAction(const std::string &, const Surface &);
     int			storeAction(void);
     int			setSurface(const Surface &);
 
     std::string		findSignal(const std::string &) const;
     SurfaceLabel	getSurfaceLabel(void);
+    bool		isTickEvent(u32 ms) const;
 };
 
 class SignalPlugin : public BasePlugin
@@ -143,12 +158,15 @@ class SignalPlugin : public BasePlugin
 protected:
     int			(*fun_action) (void*);
     void                (*fun_stop_thread) (void*);
+    const std::string &	(*fun_get_signal) (void*);
 
     bool                loadFunctions(void);
 
 public:
     SignalPlugin(const PluginParams &, Window &);
     ~SignalPlugin();
+
+    std::string		signalName(void) const;
 };
 
 #endif

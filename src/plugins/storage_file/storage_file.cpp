@@ -30,18 +30,20 @@ extern "C" {
 
 struct storage_file_t
 {
-    bool        is_used;
     bool        is_debug;
     bool        is_overwrite;
     std::string label;
     std::string format;
     Surface	surface;
 
-    storage_file_t() : is_used(false), is_debug(false), is_overwrite(false) {}
+    storage_file_t() : is_debug(false), is_overwrite(false) {}
+    ~storage_file_t()
+    {
+	clear();
+    }
 
     void clear(void)
     {
-        is_used = false;
         is_debug = false;
         is_overwrite = false;
         label.clear();
@@ -50,12 +52,6 @@ struct storage_file_t
     }
 };
 
-#ifndef STORAGE_FILE_SPOOL
-#define STORAGE_FILE_SPOOL 16
-#endif
-
-storage_file_t storage_file_vals[STORAGE_FILE_SPOOL];
-
 const char* storage_file_get_name(void)
 {
     return "storage_file";
@@ -63,41 +59,30 @@ const char* storage_file_get_name(void)
 
 int storage_file_get_version(void)
 {
-    return 20211121;
+    return 20220205;
 }
 
 void* storage_file_init(const JsonObject & config)
 {
     VERBOSE("version: " << storage_file_get_version());
 
-    int devindex = 0;
-    for(; devindex < STORAGE_FILE_SPOOL; ++devindex)
-        if(! storage_file_vals[devindex].is_used) break;
+    auto ptr = std::make_unique<storage_file_t>();
 
-    if(STORAGE_FILE_SPOOL <= devindex)
-    {
-        ERROR("spool is busy, max limit: " << STORAGE_FILE_SPOOL);
-        return NULL;
-    }
+    ptr->is_debug = config.getBoolean("debug", false);
+    ptr->is_overwrite = config.getBoolean("overwrite", false);
+    ptr->format = config.getString("format");
 
-    DEBUG("spool index: " << devindex);
-    storage_file_t* st = & storage_file_vals[devindex];
+    DEBUG("params: " << "format = " << ptr->format);
 
-    st->is_used = true;
-    st->is_debug = config.getBoolean("debug", false);
-    st->is_overwrite = config.getBoolean("overwrite", false);
-    st->format = config.getString("format");
-
-    DEBUG("params: " << "format = " << st->format);
-
-    return st;
+    return ptr.release();
 }
 
 void storage_file_quit(void* ptr)
 {
     storage_file_t* st = static_cast<storage_file_t*>(ptr);
     if(st->is_debug) DEBUG("version: " << storage_file_get_version());
-    st->clear();
+
+    delete st;
 }
 
 int storage_file_store_action(void* ptr)

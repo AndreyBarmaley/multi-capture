@@ -161,11 +161,11 @@ public:
     // IUnknown interface
     HRESULT QueryInterface(REFIID iid, LPVOID *ppv) override
     {
-        if (ppv == NULL)
-                return E_INVALIDARG;
+        if(! ppv)
+            return E_INVALIDARG;
  
         // Initialise the return result
-        *ppv = NULL;
+        *ppv = nullptr;
 
         // Obtain the IUnknown interface and compare it the provided REFIID
         CFUUIDBytes iunknown = CFUUIDGetUUIDBytes(IUnknownUUID);
@@ -605,45 +605,28 @@ struct DeckLinkDevice : public IDeckLinkInputCallback
 
 struct capture_decklink_t
 {
-    bool 	is_used;
     bool 	is_debug;
 
     DeckLinkDevice device;
     Surface surface;
 
-
-    capture_decklink_t() : is_used(false), is_debug(false)
+    capture_decklink_t() : is_debug(false)
     {
+    }
+
+    ~capture_decklink_t()
+    {
+	clear();
     }
 
     void clear(void)
     {
-	is_used = false;
 	is_debug = false;
-
 
 	surface.reset();
 	device.reset();
     }
 };
-
-#ifndef CAPTURE_DECKLINK_SPOOL
-#define CAPTURE_DECKLINK_SPOOL 4
-#endif
-
-#if SDL_BYTEORDER == SDL_BIG_ENDIAN
-#define Rmask 0xff000000
-#define Gmask 0x00ff0000
-#define Bmask 0x0000ff00
-#define Amask 0x000000ff
-#else
-#define Rmask 0x000000ff
-#define Gmask 0x0000ff00
-#define Bmask 0x00ff0000
-#define Amask 0xff000000
-#endif
-
-capture_decklink_t capture_decklink_vals[CAPTURE_DECKLINK_SPOOL];
 
 const char* capture_decklink_get_name(void)
 {
@@ -652,51 +635,31 @@ const char* capture_decklink_get_name(void)
 
 int capture_decklink_get_version(void)
 {
-    return 20211121;
+    return 20220205;
 }
-
-
-bool capture_decklink_set_mode(capture_decklink_t* st, size_t devIndex)
-{
-    return false;
-}
-
 
 void* capture_decklink_init(const JsonObject & config)
 {
     VERBOSE("version: " << capture_decklink_get_version());
 
-    int devindex = 0;
-    for(; devindex < CAPTURE_DECKLINK_SPOOL; ++devindex)
-        if(! capture_decklink_vals[devindex].is_used) break;
-
-    if(CAPTURE_DECKLINK_SPOOL <= devindex)
-    {
-        ERROR("spool is busy, max limit: " << CAPTURE_DECKLINK_SPOOL);
-        return NULL;
-    }
-
-    DEBUG("spool index: " << devindex);
-    capture_decklink_t* st = & capture_decklink_vals[devindex];
+    auto ptr = std::make_unique<capture_decklink_t>();
 
     int dev_index = config.getInteger("device", 0);
-    st->is_debug = config.getBoolean("debug", false);
+    std::string connector = config.getString("connection", "hdmi");
+    ptr->is_debug = config.getBoolean("debug", false);
 
     DEBUG("params: " << "device = " << dev_index);
+    DEBUG("params: " << "connection = " << connector);
 
-    if(! st->device.init(dev_index, config.getString("connection", "hdmi")))
+    if(! ptr->device.init(dev_index, connector))
 	return nullptr;
 
-    if(! st->device.startCapture())
-    {
-	st->clear();
+    if(! ptr->device.startCapture())
 	return nullptr;
-    }
 
-    st->device.debugInfo();
-    st->is_used = true;
+    ptr->device.debugInfo();
 
-    return st;
+    return ptr.release();
 }
 
 void capture_decklink_quit(void* ptr)
@@ -706,6 +669,7 @@ void capture_decklink_quit(void* ptr)
 
     st->device.stopCapture();
     st->clear();
+    delete st;
 }
 
 int capture_decklink_frame_action(void* ptr)

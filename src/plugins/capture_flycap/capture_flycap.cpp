@@ -29,7 +29,6 @@ extern "C" {
 
 struct capture_flycap_t
 {
-    bool 	is_used;
     bool 	is_debug;
     size_t	cam_index;
     fc2Context	context;
@@ -38,15 +37,19 @@ struct capture_flycap_t
     fc2Image	raw_image2;
     Surface 	surface;
  
-    capture_flycap_t() : is_used(false), is_debug(false), cam_index(0), context(NULL)
+    capture_flycap_t() : is_debug(false), cam_index(0), context(nullptr)
     {
 	fc2CreateImage(& raw_image1);
 	fc2CreateImage(& raw_image2);
     }
 
+    ~capture_flycap_t()
+    {
+	clear();
+    }
+
     void clear(void)
     {
-	is_used = false;
 	is_debug = false;
 	cam_index = 0;
 	surface.reset();
@@ -58,40 +61,19 @@ struct capture_flycap_t
 	{
     	    fc2Disconnect(context);
 	    fc2DestroyContext(context);
-	    context = NULL;
+	    context = nullptr;
 	}
     }
 };
 
-#ifndef CAPTURE_FLYCAP_SPOOL
-#define CAPTURE_FLYCAP_SPOOL 4
-#endif
-
-#if SDL_BYTEORDER == SDL_BIG_ENDIAN
-#define Rmask 0xff000000
-#define Gmask 0x00ff0000
-#define Bmask 0x0000ff00
-#define Amask 0x000000ff
-#else
-#define Rmask 0x000000ff
-#define Gmask 0x0000ff00
-#define Bmask 0x00ff0000
-#define Amask 0xff000000
-#endif
-
-capture_flycap_t capture_flycap_vals[CAPTURE_FLYCAP_SPOOL];
-
-void capture_flycap_build_info(void)
+void capture_flycap_camera_info(fc2Context context)
 {
     fc2Version version;
     fc2GetLibraryVersion(& version);
-                
-    DEBUG("MultiCapture2 library version: " << version.major << "." << version.minor << "." << version.type << "." << version.build);
-    DEBUG("Application build date: " << __DATE__ << " " << __TIME__);
-}
 
-void capture_flycap_camera_info(fc2Context context)
-{
+    DEBUG("FlyCapture2 library version: " << version.major << "." << version.minor << "." << version.type << "." << version.build);
+    DEBUG("Application build date: " << __DATE__ << " " << __TIME__);
+
     fc2Error error;
     fc2CameraInfo camInfo;
     error = fc2GetCameraInfo(context, & camInfo);
@@ -142,10 +124,10 @@ const char* capture_flycap_get_name(void)
 
 int capture_flycap_get_version(void)
 {
-    return 20211121;
+    return 20220205;
 }
 
-bool capture_flycap_init_cam(capture_flycap_t & st)
+bool capture_flycap_init_cam(capture_flycap_t* st)
 {
     fc2Context context;
     fc2Error error = fc2CreateContext(& context);
@@ -165,14 +147,14 @@ bool capture_flycap_init_cam(capture_flycap_t & st)
 
     if(error == FC2_ERROR_OK)
     {
-    	if(numCameras <= st.cam_index)
+    	if(numCameras <= st->cam_index)
     	{
-            ERROR("No cameras detected, index: " << st.cam_index << ", found: " << numCameras);
+            ERROR("No cameras detected, index: " << st->cam_index << ", found: " << numCameras);
     	}
 	else
 	{
 	    fc2PGRGuid guid;
-    	    error = fc2GetCameraFromIndex(context, st.cam_index, & guid);
+    	    error = fc2GetCameraFromIndex(context, st->cam_index, & guid);
 
     	    if(error == FC2_ERROR_OK)
 	    {
@@ -183,8 +165,8 @@ bool capture_flycap_init_cam(capture_flycap_t & st)
 		    // 24 bit RGB
 		    // fc2SetDefaultOutputFormat(FC2_PIXEL_FORMAT_RGB8);
 
-		    st.context = context;
-		    st.guid = guid;
+		    st->context = context;
+		    st->guid = guid;
 		    return true;
 		}
 		else
@@ -211,36 +193,22 @@ void* capture_flycap_init(const JsonObject & config)
 {
     VERBOSE("version: " << capture_flycap_get_version());
 
-    int devindex = 0;
-    for(; devindex < CAPTURE_FLYCAP_SPOOL; ++devindex)
-        if(! capture_flycap_vals[devindex].is_used) break;
+    auto ptr = std::make_unique<capture_flycap_t>();
 
-    if(CAPTURE_FLYCAP_SPOOL <= devindex)
-    {
-        ERROR("spool is busy, max limit: " << CAPTURE_FLYCAP_SPOOL);
-        return NULL;
-    }
+    ptr->cam_index = config.getInteger("device", 0);
+    ptr->is_debug = config.getBoolean("debug", false);
 
-    DEBUG("spool index: " << devindex);
-    capture_flycap_t* st = & capture_flycap_vals[devindex];
+    DEBUG("params: " << "device = " << ptr->cam_index);
 
-    st->cam_index = config.getInteger("device", 0);
-    st->is_debug = config.getBoolean("debug", false);
+    if(! capture_flycap_init_cam(ptr.get()))
+	return nullptr;
 
-    DEBUG("params: " << "device = " << st->cam_index);
+    capture_flycap_camera_info(ptr->context);
+    capture_flycap_set_time_stamping(ptr->context, true);
 
-    capture_flycap_build_info();
+    fc2StartCapture(ptr->context);
 
-    if(! capture_flycap_init_cam(*st))
-	return NULL;
-
-    capture_flycap_camera_info(st->context);
-    capture_flycap_set_time_stamping(st->context, true);
-
-    fc2StartCapture(st->context);
-    st->is_used = true;
-
-    return st;
+    return ptr.release();
 }
 
 void capture_flycap_quit(void* ptr)
@@ -251,7 +219,7 @@ void capture_flycap_quit(void* ptr)
     if(st->context)
 	fc2StopCapture(st->context);
 
-    st->clear();
+    delete st;
 }
 
 int capture_flycap_frame_action(void* ptr)

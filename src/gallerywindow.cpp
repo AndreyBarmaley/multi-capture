@@ -23,9 +23,14 @@
 #include "mainscreen.h"
 #include "gallerywindow.h"
 
-GalleryItem::GalleryItem(const Surface & sf, const std::string & label, GalleryWindow & win) : ListWidgetItem(win)
+GalleryItem::GalleryItem(const Surface & sf, const std::string & label, bool hidelabel, GalleryWindow & win) : ListWidgetItem(win)
 {
-    Size sz(win.width(), win.width() * sf.height() / sf.width());
+    Size sz;
+
+    if(win.width() < win.height())
+        sz = Size(win.width(), win.width() * sf.height() / sf.width());
+    else
+        sz = Size(win.height() * sf.width() / sf.height(), win.height());
 
     thumbnail = Display::createTexture(sz - Size(2, 2));
     Display::renderSurface(sf, sf.rect(), thumbnail, thumbnail.rect());
@@ -37,7 +42,8 @@ GalleryItem::GalleryItem(const Surface & sf, const std::string & label, GalleryW
     if(main)
     {
 	renderToolTip(label, main->fontRender(), Color::Black, Color::Wheat, Color::MidnightBlue);
-	Display::renderText(main->fontRender(), Systems::basename(label), Color::Yellow, thumbnail, Point(5, thumbnail.height() - 5), AlignLeft, AlignBottom);
+	if(! hidelabel)
+            Display::renderText(main->fontRender(), Systems::basename(label), Color::Yellow, thumbnail, Point(5, thumbnail.height() - 5), AlignLeft, AlignBottom);
     }
 
     setVisible(true);
@@ -51,9 +57,11 @@ void GalleryItem::renderWindow(void)
         renderRect(Color::Yellow, rect());
 }
 
-GalleryWindow::GalleryWindow(const Point & pos, const Size & sz, const Color & col, Window & win)
-    : ListWidget(pos, sz, sz.h > sz.w, & win), backcol(col)
+GalleryWindow::GalleryWindow(const Point & pos, const Size & sz, const JsonObject & params, Window & win)
+    : ListWidget(pos, sz, sz.h > sz.w, & win), hidelabel(false)
 {
+    backcol = params.getString("background");
+    hidelabel = params.getBoolean("label:hide", false);
     setState(FlagLayoutForeground);
     setVisible(true);
 }
@@ -66,7 +74,7 @@ void GalleryWindow::renderWindow(void)
 
 void GalleryWindow::addImage(const Surface & sf, const std::string & label)
 {
-    auto item = new GalleryItem(sf, label, *this);
+    auto item = new GalleryItem(sf, label, hidelabel, *this);
     addItem(item);
     setActiveItem(item);
 }

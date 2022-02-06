@@ -31,7 +31,7 @@ class GalleryItem : public ListWidgetItem
     Texture	thumbnail;
 
 public:
-    GalleryItem(const Surface &, const std::string &, GalleryWindow &);
+    GalleryItem(const Surface &, const std::string &, bool, GalleryWindow &);
 
     void	renderWindow(void) override;
 };
@@ -39,9 +39,10 @@ public:
 class GalleryWindow : public ListWidget
 {
     Color	backcol;
+    bool        hidelabel;
 
 public:
-    GalleryWindow(const Point &, const Size &, const Color &, Window &);
+    GalleryWindow(const Point &, const Size &, const JsonObject &, Window &);
 
     void 	renderWindow(void) override;
     void 	addImage(const Surface &, const std::string &);
