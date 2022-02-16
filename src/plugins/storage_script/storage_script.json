@@ -1,5 +1,5 @@
 {
     "debug":	false,
-    "exec":	"/var/tmp/fly-capture-store.sh",
-    "image":	"/var/tmp/fly-capture-put.ppm"
+    "exec":	"/var/tmp/multi-capture-store.sh",
+    "image":	"/var/tmp/multi-capture-put.ppm"
 }

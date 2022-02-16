@@ -34,6 +34,7 @@ class MainScreen;
 struct WindowParams
 {
     std::string		labelName;
+    std::string		labelFormat;
     Color		labelColor;
     Color		fillColor;
     Rect		position;

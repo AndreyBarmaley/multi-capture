@@ -35,6 +35,7 @@ struct storage_file_t
     std::string label;
     std::string format;
     Surface	surface;
+    SessionIdName session;
 
     storage_file_t() : is_debug(false), is_overwrite(false) {}
     ~storage_file_t()
@@ -59,7 +60,7 @@ const char* storage_file_get_name(void)
 
 int storage_file_get_version(void)
 {
-    return 20220205;
+    return 20220214;
 }
 
 void* storage_file_init(const JsonObject & config)
@@ -93,11 +94,18 @@ int storage_file_store_action(void* ptr)
     if(st->surface.isValid())
     {
 	std::string filename = String::strftime(st->format);
+
+	if(0 < st->session.id)
+	{
+    	    filename = String::replace(filename, "${sid}", st->session.id);
+    	    filename = String::replace(filename, "${session}", st->session.name);
+	}
+
 	std::string dir = Systems::dirname(filename);
 
 	if(! Systems::isDirectory(dir))
 	{
-	    if(! Systems::makeDirectory(dir, 0755))
+	    if(! Systems::makeDirectory(dir, 0775))
 	    {
 		ERROR("error mkdir: " << dir);
 		return -1;
@@ -119,6 +127,16 @@ int storage_file_store_action(void* ptr)
     }
 
     return -1;
+}
+
+int storage_file_session_reset(void* ptr, const SessionIdName & ss)
+{
+    storage_file_t* st = static_cast<storage_file_t*>(ptr);
+    if(st->is_debug) DEBUG("version: " << storage_file_get_version());
+
+    st->session = ss;
+
+    return 0;
 }
 
 int storage_file_set_surface(void* ptr, const Surface & sf)

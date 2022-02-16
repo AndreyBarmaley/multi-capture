@@ -21,6 +21,7 @@
  ***************************************************************************/
 
 #include <list>
+#include <memory>
 #include <cstring>
 
 #include "../../settings.h"
@@ -49,7 +50,7 @@ struct signal_dbus_signal_t
 	clear();
     }
 
-    bool init(bool isSystem)
+    bool init(bool isSystem, bool ownerService)
     {
 	// dbus init
 	DBusError dbus_err;
@@ -67,37 +68,38 @@ struct signal_dbus_signal_t
 	if(! dbus_conn)
     	    return false;
 
-	int ret = dbus_bus_request_name(dbus_conn, dbus_name.c_str(), DBUS_NAME_FLAG_REPLACE_EXISTING , &dbus_err);
-	if(dbus_error_is_set(&dbus_err))
+	if(ownerService)
 	{
-	    ERROR("dbus_bus_request_name: " << dbus_err.message);
-	    dbus_error_free(&dbus_err);
-    	    return false;
-	}
+	    int ret = dbus_bus_request_name(dbus_conn, dbus_name.c_str(), DBUS_NAME_FLAG_REPLACE_EXISTING , &dbus_err);
+	    if(dbus_error_is_set(&dbus_err))
+	    {
+		ERROR("dbus_bus_request_name: " << dbus_err.message);
+		dbus_error_free(&dbus_err);
+    		return false;
+	    }
 
-	if(is_debug)
-	{
-	    VERBOSE("dbus_bus_request_name: ret code: " << ret);
-	}
+	    if(is_debug)
+	    {
+		VERBOSE("dbus_bus_request_name: ret code: " << ret);
+	    }
 
-	if(0 > ret)
-    	    return false;
+	    if(0 > ret)
+    		return false;
+	}
 
 	// add a rule for which messages we want to see
 	std::string matchForm = StringFormat("type='%1',interface='%2'").arg("signal").arg(dbus_interface);
 	DEBUG("math form: " << matchForm);
 
 	dbus_bus_add_match(dbus_conn, matchForm.c_str(), &dbus_err);
-	dbus_connection_flush(dbus_conn);
 	if(dbus_error_is_set(&dbus_err))
 	{
-	    ERROR("match error: " << dbus_err.message);
+	    ERROR("dbus_bus_add_match: " << dbus_err.message);
 	    dbus_error_free(&dbus_err);
     	    return false;
 	}
 
-	if(dbus_error_is_set(&dbus_err))
-	    dbus_error_free(&dbus_err);
+	dbus_connection_flush(dbus_conn);
 
 	return true;
     }
@@ -105,19 +107,21 @@ struct signal_dbus_signal_t
     int dbusSignalAutostart(void)
     {
 	// create a new method call and check for errors
-	DBusMessage* msg = dbus_message_new_method_call(dbus_name.c_str(), dbus_object.c_str(), dbus_interface.c_str(), dbus_autostart.c_str());
+        std::unique_ptr<DBusMessage, decltype(dbus_message_unref)*> msgCall {
+            dbus_message_new_method_call(dbus_name.c_str(), dbus_object.c_str(), dbus_interface.c_str(), dbus_autostart.c_str()),
+            dbus_message_unref };
 
-	if(! msg)
+	if(! msgCall)
 	{
-	    ERROR("message is null");
+	    ERROR("dbus_message_new_method_call: failed");
 	    return 0;
 	}
 
 	// send message and get a handle for a reply
-	DBusPendingCall* pending;
-	if(!dbus_connection_send_with_reply (dbus_conn, msg, &pending, -1  /* -1 is default timeout */))
+	DBusPendingCall* pending = nullptr;
+	if(!dbus_connection_send_with_reply(dbus_conn, msgCall.get(), &pending, -1  /* -1 is default timeout */))
 	{
-	    ERROR("out of memory");
+	    ERROR("dbus_connection_send_with_reply: failed");
 	    return 0;
 	}
 
@@ -130,25 +134,23 @@ struct signal_dbus_signal_t
 	dbus_connection_flush(dbus_conn);
 	if(is_debug) VERBOSE("request sent");
 
-	// free message
-	dbus_message_unref(msg);
-
 	// block until we recieve a reply
 	dbus_pending_call_block(pending);
 
 	// get the reply message
-	msg = dbus_pending_call_steal_reply(pending);
-	if(! msg)
+        std::unique_ptr<DBusMessage, decltype(dbus_message_unref)*> msgReply {
+	    dbus_pending_call_steal_reply(pending),
+            dbus_message_unref };
+
+	if(! msgReply)
 	{
-	    ERROR("reply is null");
+	    ERROR("dbus_pending_call_steal_reply: failed");
 	    return 0;
 	}
 
 	// free the pending message handle
 	dbus_pending_call_unref(pending);
-	dbus_message_unref(msg);
-
-      return 1;
+        return 1;
     }
 
     void clear(void)
@@ -158,6 +160,7 @@ struct signal_dbus_signal_t
         delay = 100;
 	signal.clear();
 	dbus_name.clear();
+	dbus_object.clear();
 	dbus_interface.clear();
 	dbus_signals.clear();
 	dbus_conn = nullptr;
@@ -171,7 +174,7 @@ const char* signal_dbus_signal_get_name(void)
 
 int signal_dbus_signal_get_version(void)
 {
-    return 20220205;
+    return 20220212;
 }
 
 void* signal_dbus_signal_init(const JsonObject & config)
@@ -191,7 +194,7 @@ void* signal_dbus_signal_init(const JsonObject & config)
     ptr->dbus_signals = config.getStdList<std::string>("dbus:signals");
     ptr->dbus_signals.emplace_back(config.getString("dbus:signal", "test_signal"));
 
-    if(! ptr->init(dbusIsSystem))
+    if(! ptr->init(dbusIsSystem, ptr->dbus_autostart.empty()))
 	return nullptr;
 
     DEBUG("params: " << "delay = " << ptr->delay);
@@ -234,10 +237,13 @@ int signal_dbus_signal_action(void* ptr)
     {
 	// non blocking read of the next available message
 	dbus_connection_read_write(st->dbus_conn, 0);
-    	DBusMessage* dbus_msg = dbus_connection_pop_message(st->dbus_conn);
+
+        std::unique_ptr<DBusMessage, decltype(dbus_message_unref)*> msg {
+            dbus_connection_pop_message(st->dbus_conn),
+            dbus_message_unref };
 
 	// loop again if we haven't read a message
-	if(! dbus_msg)
+	if(! msg)
 	{
 	    Tools::delay(st->delay);
 	    continue;
@@ -246,7 +252,7 @@ int signal_dbus_signal_action(void* ptr)
         for(auto & dbus_signal : st->dbus_signals)
 	{
             // check if the message is a signal from the correct interface and with the correct name
-	    if(dbus_message_is_signal(dbus_msg, st->dbus_interface.c_str(), dbus_signal.c_str()))
+	    if(dbus_message_is_signal(msg.get(), st->dbus_interface.c_str(), dbus_signal.c_str()))
 	    {
 	        if(st->is_debug) DEBUG("dbus_message_is_signal: " << dbus_signal);
 
@@ -254,24 +260,8 @@ int signal_dbus_signal_action(void* ptr)
 
 		// send signal to display scene
                 DisplayScene::pushEvent(nullptr, ActionSignalBack, st);
-
-	        /*
-	            DBusMessageIter dbus_args;
-
-	            // read the parameters
-	            if(! dbus_message_iter_init(msg, &args))
-        	        fprintf(stderr, "Message Has No Parameters\n");
-	            else
-	            if(DBUS_TYPE_STRING != dbus_message_iter_get_arg_type(&args))
-		        fprintf(stderr, "Argument is not string!\n");
-	            else
-        	        dbus_message_iter_get_basic(&args, &sigvalue);
-	        */
 	    }
         }
-
-	// free the message
-	dbus_message_unref(dbus_msg);
 
 	if(st->is_thread)
 	  Tools::delay(st->delay);

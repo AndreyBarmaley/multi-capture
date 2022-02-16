@@ -57,7 +57,7 @@ const char* storage_script_get_name(void)
 
 int storage_script_get_version(void)
 {
-    return 20220205;
+    return 20220212;
 }
 
 void* storage_script_init(const JsonObject & config)
@@ -121,6 +121,14 @@ int storage_script_store_action(void* ptr)
     }
 
     return -1;
+}
+
+int storage_script_session_reset(void* ptr, const SessionIdName & ss)
+{
+    storage_script_t* st = static_cast<storage_script_t*>(ptr);
+    if(st->is_debug) DEBUG("version: " << storage_script_get_version());
+
+    return 0;
 }
 
 int storage_script_set_surface(void* ptr, const Surface & sf)

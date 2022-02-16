@@ -29,6 +29,11 @@
 
 using namespace std::chrono_literals;
 
+namespace Application
+{
+    std::string getPath(void);
+}
+
 /* PluginParams */
 PluginParams::PluginParams(const JsonObject & jo)
 {
@@ -49,13 +54,14 @@ PluginParams::PluginParams(const JsonObject & jo)
     if(type.size() && file.empty())
     {
 	StringList dirs;
-	dirs << "plugins" << "libs";
+	dirs << "plugins" << "libs" << Application::getPath();
 
 	for(auto & dir : Systems::shareDirectories(Settings::programDomain()))
 	    dirs << Systems::concatePath(dir, "plugins");
 
 	for(auto & dir : dirs)
 	{
+	    DEBUG("check plugin dirs: " << dir);
 	    std::string filename = Systems::concatePath(dir, type).append(Systems::suffixLib());
 	    if(Systems::isFile(filename))
 	    {
@@ -99,18 +105,25 @@ BasePlugin::BasePlugin(const PluginParams & params, Window & win) : PluginParams
     fun_get_name(nullptr), fun_get_version(nullptr), fun_init(nullptr), fun_quit(nullptr),
     threadInitialize(false), threadAction(false), threadExit(false), threadResult(0), parent(& win)
 {
-    lib = Systems::openLib(file);
-
-    if(lib)
+    if(file.empty())
     {
-	DEBUG("open library: " << file);
+        ERROR("plugin not found: " << name << ", type: " << type);
     }
     else
     {
-	ERROR("cannot open library: " << file);
-    }
+        lib = Systems::openLib(file);
 
-    loadFunctions();
+        if(lib)
+        {
+	    DEBUG("open library: " << file);
+        }
+        else
+        {
+	    ERROR("cannot open library: " << file);
+        }
+
+        loadFunctions();
+    }
 }
 
 BasePlugin::~BasePlugin()
@@ -214,6 +227,9 @@ CapturePlugin::CapturePlugin(const PluginParams & params, Window & win) : BasePl
     tickPeriod(0), scaleImage(false), fun_frame_action(nullptr), fun_get_surface(nullptr)
 {
     blue = generateBlueScreen(_("error"));
+    tickPeriod = params.config.getInteger("tick");
+    if(tickPeriod < 0) tickPeriod = 0;
+    scaleImage = params.config.getBoolean("scale");
 
     if(loadFunctions())
     {
@@ -244,10 +260,6 @@ CapturePlugin::CapturePlugin(const PluginParams & params, Window & win) : BasePl
 	    }
         });
     }
-
-    tickPeriod = params.config.getInteger("tick");
-    if(tickPeriod < 0) tickPeriod = 0;
-    scaleImage = params.config.getBoolean("scale");
 }
 
 CapturePlugin::~CapturePlugin()
@@ -362,7 +374,7 @@ const Surface & CapturePlugin::getSurface(void)
 
 /* StoragePlugin */
 StoragePlugin::StoragePlugin(const PluginParams & params, Window & win) : BasePlugin(params, win),
-    tickPeriod(0), fun_store_action(nullptr), fun_set_surface(nullptr)
+    tickPeriod(0), fun_store_action(nullptr), fun_set_surface(nullptr), fun_get_surface(nullptr), fun_get_label(nullptr), fun_session_reset(nullptr)
 {
     signals = params.config.getStdList<std::string>("signals");
     std::transform(signals.begin(), signals.end(), signals.begin(), String::toLower);
@@ -451,6 +463,15 @@ bool StoragePlugin::loadFunctions(void)
         return false;
     }
 
+    // fun_session_reset
+    str = std::string(type).append("_session_reset");
+    fun_session_reset = (int (*)(void*, const SessionIdName &)) Systems::procAddressLib(lib, str);
+    if(! fun_session_reset)
+    {
+        ERROR("cannot load function: " << str);
+        return false;
+    }
+
     return true;
 }
 
@@ -458,6 +479,12 @@ bool StoragePlugin::isTickEvent(u32 ms) const
 {
     return 0 <= tickPeriod &&
             ttStorage.check(ms, tickPeriod);
+}
+
+void StoragePlugin::sessionReset(const SessionIdName & ss)
+{
+    if(fun_session_reset)
+	fun_session_reset(data, ss);
 }
 
 int StoragePlugin::storeAction(void)
@@ -477,7 +504,7 @@ int StoragePlugin::storeAction(void)
 		thread.join();
             thread = std::thread([this](){
                 int err = this->fun_store_action(this->data);
-                if(0 == err) DisplayScene::pushEvent(this->parent, ActionStoreComplete, this);
+                if(0 == err) DisplayScene::pushEvent(nullptr, ActionStoreComplete, this);
                 this->threadAction = false;
                 this->threadResult = err;
             });
@@ -490,9 +517,8 @@ int StoragePlugin::storeAction(void)
 
 bool StoragePlugin::signalBackAction(const std::string & name, const Surface & back)
 {
-    std::string found = findSignal(name);
-
-    if(found.size())
+    std::string signal = findSignal(String::toLower(name));
+    if(signal.size())
     {
         setSurface(back);
 	storeAction();
@@ -570,17 +596,33 @@ SignalPlugin::SignalPlugin(const PluginParams & params, Window & win)
 {
     if(loadFunctions())
     {
-	data = fun_init(config);
-	if(data)
-        {
-            threadInitialize = true;
+	thread = std::thread([this](){
+            if(this->data)
+	    {
+                this->fun_quit(this->data);
+		this->data = nullptr;
+	    }
 
-            // action mode: thread
-            DEBUG("thread action start: " << name);
-    	    thread = std::thread([this](){
+            this->threadInitialize = false;
+            DEBUG("thread init start: " << this->name);
+
+	    while(! this->threadExit)
+	    {
+	        if(nullptr != (this->data = this->fun_init(this->config)))
+                {
+		    this->threadInitialize = true;
+                    DEBUG("thread init complete: " << this->name);
+		    break;
+	        }
+
+                // free res
+                ERROR("thread init broken: " << this->name);
+                std::this_thread::sleep_for(3000ms);
+	    }
+
+	    if(this->threadInitialize && ! this->threadExit)
                 this->fun_action(this->data);
-            });
-        }
+        });
     }
 }
 

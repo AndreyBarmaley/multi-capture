@@ -40,6 +40,16 @@ bool translationInit(void)
     return false;
 }
 
+namespace Application
+{
+    const char* prog = nullptr;
+
+    std::string getPath(void)
+    {
+	return Systems::dirname(prog);
+    }
+}
+
 int main(int argc, char **argv)
 {
     LogWrapper::init("multi_capture", argv[0]);
@@ -83,6 +93,7 @@ int main(int argc, char **argv)
 	    if(! Display::init(title, geometry, fullscreen))
     		return EXIT_FAILURE;
 
+	    Application::prog = argv[0];
 	    MainScreen(jo).exec();
 	}
 	else

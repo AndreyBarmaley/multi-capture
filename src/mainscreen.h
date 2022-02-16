@@ -81,6 +81,8 @@ public:
     const std::string &	getUserName(void) const { return username; }
     const std::string &	getHome(void) const { return home; }
     const std::string &	getSession(void) const { return session; }
+
+    std::string         formatString(const std::string &) const;
 };
 
 #endif

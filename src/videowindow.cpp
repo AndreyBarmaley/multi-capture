@@ -33,6 +33,7 @@ using namespace std::chrono_literals;
 WindowParams::WindowParams(const JsonObject & jo, const MainScreen* main) : skip(false)
 {
     labelName = jo.getString("label:name");
+    labelFormat = jo.getString("label:format");
     skip = jo.getBoolean("window:skip", false);
     labelColor = JsonUnpack::color(jo, "label:color", Color::Red);
     fillColor = JsonUnpack::color(jo, "window:fill", Color::Navy);
@@ -125,25 +126,14 @@ VideoWindow::VideoWindow(const WindowParams & params, Window & parent) : Window(
 	
 	    if(storage.config.isValid())
 	    {
-		if(storage.config.isString("format"))
+		auto format = storage.config.getString("format");
+		if(! format.empty())
 		{
-		    auto format = storage.config.getString("format");
-		    if(! format.empty())
-		    {
-			if(const MainScreen* scr = dynamic_cast<const MainScreen*>(& parent))
-			{
-			    format = String::replace(format, "${uid}", scr->getUid());
-			    format = String::replace(format, "${pid}", scr->getPid());
-			    format = String::replace(format, "${sid}", scr->getSid());
-			    format = String::replace(format, "${user}", scr->getUserName());
-			    format = String::replace(format, "${home}", scr->getHome());
-			    format = String::replace(format, "${session}", scr->getSession());
-			}
-			format = String::replace(format, "${label}", label());
-			storage.config.addString("format", format);
-		    }
+		    if(const MainScreen* scr = dynamic_cast<const MainScreen*>(& parent))
+                        format = scr->formatString(format);
+		    format = String::replace(format, "${label}", label());
+		    storage.config.addString("format", format);
 		}
-
 		storagePlugins.emplace_back(new StoragePlugin(storage, *this));
 	    }
 	}
@@ -163,7 +153,18 @@ void VideoWindow::renderWindow(void)
 
     const MainScreen* scr = dynamic_cast<const MainScreen*>(parent());
     if(scr && ! labelColor.isTransparent())
-	renderText(scr->fontRender(), labelName, labelColor, Point(10, 10));
+    {
+        std::string labelText = labelName;
+
+        if(! labelFormat.empty())
+        {
+            labelText = scr->formatString(labelFormat);
+            labelText = String::strftime(labelText);
+            labelText = String::replace(labelText, "${label}", labelName);
+        }
+
+	renderText(scr->fontRender(), labelText, labelColor, Point(10, 10));
+    }
 }
 
 void VideoWindow::tickEvent(u32 ms)
@@ -194,6 +195,15 @@ bool VideoWindow::userEvent(int act, void* data)
 {
     switch(act)
     {
+	case ActionSessionReset:
+	    if(auto ptr = static_cast<const SessionIdName*>(data))
+    	    {
+		for(auto & plugin : storagePlugins)
+        	    plugin->sessionReset(*ptr);
+	    }
+	    // broadcast signal
+	    return false;
+
 	case ActionFrameComplete:
             back = capturePlugin->getSurface();
 	    renderWindow();

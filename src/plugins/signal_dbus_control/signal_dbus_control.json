@@ -1,0 +1,5 @@
+{
+    "debug":	      true,
+    "delay":          100,
+    "dbus:system":    true
+}

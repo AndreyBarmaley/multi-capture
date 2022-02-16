@@ -28,7 +28,7 @@
 #include "libswe.h"
 using namespace SWE;
 
-#define VERSION 20220205
+#define VERSION 20220214
 enum { ActionNone = 11110, ActionFrameComplete = 11111, ActionPluginReset = 11112,
         ActionUnused11113 = 11113, ActionSignalBack = 11114, ActionStoreComplete = 11115,
         ActionSessionReset = 11116, ActionProgramExit = 11119 };

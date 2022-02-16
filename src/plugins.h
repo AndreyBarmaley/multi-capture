@@ -137,6 +137,7 @@ protected:
     int			(*fun_set_surface) (void*, const Surface &);
     const Surface &	(*fun_get_surface) (void*);
     const std::string &	(*fun_get_label) (void*);
+    int			(*fun_session_reset) (void*, const SessionIdName &);
 
     bool                loadFunctions(void);
 
@@ -147,6 +148,7 @@ public:
     bool		signalBackAction(const std::string &, const Surface &);
     int			storeAction(void);
     int			setSurface(const Surface &);
+    void		sessionReset(const SessionIdName &);
 
     std::string		findSignal(const std::string &) const;
     SurfaceLabel	getSurfaceLabel(void);

@@ -5,6 +5,6 @@
     "dbus:name":      "org.test.dbus",
     "dbus:object":    "/org/test/dbus/object",
     "dbus:interface": "org.test.dbus.interface",
-    "dbus:autostart": "run_service",
+    "#dbus:autostart": "run_service",
     "dbus:signals":    [ "take_snapshot1", "take_snapshot2", "take_snapshot3" ]
 }

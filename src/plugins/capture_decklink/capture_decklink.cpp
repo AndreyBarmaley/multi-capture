@@ -26,7 +26,8 @@
 #include <algorithm>
 
 #include "../../settings.h"
-#include "DeckLinkAPI.h"
+
+#include "DeckLinkAPIDispatch.cpp"
 
 #ifdef __cplusplus
 extern "C" {
@@ -49,6 +50,10 @@ namespace
     std::array<idname_t, 6> _connections = { { 
 	{ bmdVideoConnectionSDI, "SDI" }, { bmdVideoConnectionHDMI, "HDMI" }, { bmdVideoConnectionOpticalSDI, "OpticalSDI" },
 	{ bmdVideoConnectionComponent, "Component" }, { bmdVideoConnectionComposite, "Composite" }, { bmdVideoConnectionSVideo, "SVideo" }
+    } };
+
+    std::array<idname_t, 4> _duplex = { { 
+	{ bmdDuplexFull, "full" }, { bmdDuplexHalf, "half" }, { bmdDuplexSimplex, "simplex" }, { bmdDuplexInactive, "inactive" }
     } };
 
     std::array<idname_t, 110> _modes = { { 
@@ -99,6 +104,12 @@ const char* displayMode2name(BMDDisplayMode mode)
 {
     auto it = std::find_if(_modes.begin(), _modes.end(), [=](auto & val){ return val.id == mode; });
     return it != _modes.end() ? it->name : "unknown";
+}
+
+const char* duplexMode2name(BMDDuplexMode mode)
+{
+    auto it = std::find_if(_duplex.begin(), _duplex.end(), [=](auto & val){ return val.id == mode; });
+    return it != _duplex.end() ? it->name : "unknown";
 }
 
 BMDDisplayMode name2displayMode(const std::string & name)
@@ -316,9 +327,36 @@ struct DeckLinkDevice : public IDeckLinkInputCallback
 			break;
 		    }
 
-		    if(S_OK != deckLink->QueryInterface(IID_IDeckLinkStatus, reinterpret_cast<void**>(& deckStatus)))
+		    if(S_OK == deckLink->QueryInterface(IID_IDeckLinkHDMIInputEDID, reinterpret_cast<void**>(& deckHDMI)))
 		    {
-			ERROR("DeckLinkStatus: failed");
+    			// Enable all EDID functionality if possible
+    			int64_t allKnownRanges = bmdDynamicRangeSDR | bmdDynamicRangeHDRStaticPQ | bmdDynamicRangeHDRStaticHLG;
+    			deckHDMI->SetInt(bmdDeckLinkHDMIInputEDIDDynamicRange, allKnownRanges);
+    			deckHDMI->WriteToEDID();
+		    }
+		    else
+		    {
+			ERROR("DeckLinkHDMI: failed");
+		    }
+
+    		    // Get the supported input connections for the device
+    		    int64_t supportedInputConnections = 0;
+    		    if(deckAttrs->GetInt(BMDDeckLinkVideoInputConnections, & supportedInputConnections) != S_OK)
+    		    {
+        		ERROR("Supported input connections failed");
+			break;
+    		    }
+
+		    auto setConnection = name2videoConnection(connection);
+		    if(supportedInputConnections & setConnection)
+		    {
+			// set connection
+			if(S_OK != deckConfig->SetInt(bmdDeckLinkConfigVideoInputConnection, setConnection))
+			    ERROR("set connection failed: " << connection);
+		    }
+		    else
+		    {
+			ERROR("connection not supported: " << connection << ", all supported: " << String::hex(supportedInputConnections));
 			break;
 		    }
 
@@ -332,23 +370,11 @@ struct DeckLinkDevice : public IDeckLinkInputCallback
 			break;
             	    }
 
-/*
-		    if(S_OK == deckLink->QueryInterface(IID_IDeckLinkHDMIInputEDID, reinterpret_cast<void**>(& deckHDMI)))
+		    if(S_OK != deckLink->QueryInterface(IID_IDeckLinkStatus, reinterpret_cast<void**>(& deckStatus)))
 		    {
-    			// Enable all EDID functionality if possible
-    			int64_t allKnownRanges = bmdDynamicRangeSDR | bmdDynamicRangeHDRStaticPQ | bmdDynamicRangeHDRStaticHLG;
-    			deckHDMI->SetInt(bmdDeckLinkHDMIInputEDIDDynamicRange, allKnownRanges);
-    			deckHDMI->WriteToEDID();
+			ERROR("DeckLinkStatus: failed");
+			break;
 		    }
-		    else
-		    {
-			ERROR("DeckLinkHDMI: failed");
-		    }
-
-*/
-		    // set connection
-		    if(S_OK != deckConfig->SetInt(bmdDeckLinkConfigVideoInputConnection, name2videoConnection(connection)))
-			ERROR("set connection failed");
 
             	    return true;
 		}
@@ -369,6 +395,28 @@ struct DeckLinkDevice : public IDeckLinkInputCallback
 	return false;
     }
 
+    void dumpDisplayModes(void)
+    {
+	// dump display modes
+    	IDeckLinkDisplayModeIterator* displayModeIterator = nullptr;
+    	if(deckInput->GetDisplayModeIterator(& displayModeIterator) == S_OK)
+	{
+	    IDeckLinkDisplayMode* displayMode = nullptr;
+    	    while(displayModeIterator->Next(& displayMode) == S_OK)
+    	    {
+		char* modeName = nullptr;
+            	//BMDDisplayMode mode = displayMode->GetDisplayMode();
+            	if(displayMode->GetName((const char**) & modeName) == S_OK)
+		{
+		    VERBOSE("display mode: " << modeName);
+		    free(modeName);
+		}
+            	displayMode->Release();
+	    }
+	    displayModeIterator->Release();
+	}
+    }
+
     bool startCapture(void)
     {
 	if(S_OK != deckInput->SetCallback(this))
@@ -377,7 +425,7 @@ struct DeckLinkDevice : public IDeckLinkInputCallback
 	    return false;
 	}
 
-	if(S_OK != deckInput->EnableVideoInput(bmdModeNTSC, bmdFormat8BitBGRA, bmdVideoInputFlagDefault | bmdVideoInputEnableFormatDetection))
+	if(S_OK != deckInput->EnableVideoInput(bmdModeNTSC, bmdFormat8BitYUV, bmdVideoInputFlagDefault | bmdVideoInputEnableFormatDetection))
 	{
     	    ERROR("Failed to switch video mode");
 	    return false;
@@ -407,6 +455,15 @@ struct DeckLinkDevice : public IDeckLinkInputCallback
 	char* deckLinkName = nullptr;
 	deckLink->GetDisplayName((const char**) & deckLinkName);
 
+        int64_t duplexMode = 0;
+        if(S_OK != deckAttrs->GetInt(BMDDeckLinkDuplex, & duplexMode))
+	    ERROR("get BMDDeckLinkDuplex failed");
+
+        if(duplexMode == bmdDuplexInactive)
+	{
+	    ERROR("device inactive");
+	}
+
 	int64_t currentInputConnection = 0;
 	if(S_OK != deckConfig->GetInt(bmdDeckLinkConfigVideoInputConnection, & currentInputConnection))
 	    ERROR("get bmdDeckLinkConfigVideoInputConnection failed");
@@ -431,6 +488,7 @@ struct DeckLinkDevice : public IDeckLinkInputCallback
 	DEBUG("*** DeckLink INFORMATION ***" << 
 	    "\nLibrary version: " << BMDDeckLinkAPIVersion <<
 	    "\nCapture device: " << deckLinkName <<
+	    "\nDeckLink duplex: " << duplexMode2name(duplexMode) <<
 	    "\nCurrent connector: " << videoConnection2name(currentInputConnection) <<
 	    "\nCurrent input video mode: " << displayMode2name(currentVideoInputMode) <<
 	    "\nCurrent input pixel format: " << pixelFormat2name(currentVideoInputPixelFormat) <<
@@ -486,7 +544,8 @@ struct DeckLinkDevice : public IDeckLinkInputCallback
     HRESULT VideoInputFormatChanged(BMDVideoInputFormatChangedEvents notificationEvents,
 				IDeckLinkDisplayMode* newDisplayMode, BMDDetectedVideoInputFormatFlags detectedSignalFlags) override
     {
-        BMDPixelFormat  pixelFormat;
+	// !!!
+        BMDPixelFormat pixelFormat = bmdFormat10BitRGB;
         
         if(detectedSignalFlags & bmdDetectedVideoInputRGB444)
         {
@@ -505,9 +564,23 @@ struct DeckLinkDevice : public IDeckLinkInputCallback
 	    }
         }
         else
+	if(detectedSignalFlags & bmdDetectedVideoInputYCbCr422)
+        {
+            if(detectedSignalFlags & bmdDetectedVideoInput8BitDepth)
+                pixelFormat = bmdFormat8BitYUV;
+            else
+	    if(detectedSignalFlags & bmdDetectedVideoInput10BitDepth)
+                pixelFormat = bmdFormat10BitYUV;
+            else
+            {
+        	ERROR("Invalid color depth for YUV, input format flags: " << String::hex(detectedSignalFlags));
+                return E_INVALIDARG;
+	    }
+        }
+        else
 	{
             ERROR("Unexpected detected video input format flags: " << String::hex(detectedSignalFlags));
-            return E_INVALIDARG;
+            return E_FAIL;
 	}
 
 	bgra32Frame.reset();
@@ -546,7 +619,7 @@ struct DeckLinkDevice : public IDeckLinkInputCallback
 	{
 	    if(videoFrame->GetFlags() & bmdFrameHasNoInputSource)
 	    {
-		ERROR("IDeckLinkVideoInputFrame: invalid frame");
+		ERROR("IDeckLinkVideoInputFrame: no input source, flags: " << String::hex(videoFrame->GetFlags()));
                 return E_FAIL;
 	    }
 
@@ -635,7 +708,7 @@ const char* capture_decklink_get_name(void)
 
 int capture_decklink_get_version(void)
 {
-    return 20220205;
+    return 20220214;
 }
 
 void* capture_decklink_init(const JsonObject & config)
@@ -654,10 +727,11 @@ void* capture_decklink_init(const JsonObject & config)
     if(! ptr->device.init(dev_index, connector))
 	return nullptr;
 
+    ptr->device.debugInfo();
+    if(ptr->is_debug) ptr->device.dumpDisplayModes();
+
     if(! ptr->device.startCapture())
 	return nullptr;
-
-    ptr->device.debugInfo();
 
     return ptr.release();
 }

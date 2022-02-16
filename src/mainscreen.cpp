@@ -323,3 +323,17 @@ void MainScreen::addImageGallery(const Surface & sf, const std::string & label)
 {
     if(gallery) gallery->addImage(sf, label);
 }
+
+std::string MainScreen::formatString(const std::string & format) const
+{
+    auto str = String::replace(format, "${uid}", getUid());
+    str = String::replace(str, "${pid}", getPid());
+    str = String::replace(str, "${user}", getUserName());
+    str = String::replace(str, "${home}", getHome());
+    if(getSid())
+    {
+	str = String::replace(str, "${sid}", getSid());
+	str = String::replace(str, "${session}", getSession());
+    }
+    return str;
+}
