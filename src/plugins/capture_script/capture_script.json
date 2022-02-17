@@ -1,7 +1,7 @@
 {
     "debug":	false,
-    "exec":	"/var/tmp/fly-capture-get.sh",
-    "result":	"/var/tmp/fly-capture-res.ppm",
+    "exec":	"/var/tmp/multi-capture-get.sh",
+    "result":	"/var/tmp/multi-capture-res.ppm",
     "tick":	3000,
     "scale":	true
 }
