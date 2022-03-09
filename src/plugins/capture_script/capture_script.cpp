@@ -20,6 +20,9 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
+#include <cstdio>
+#include <memory>
+#include <iterator>
 #include "../../settings.h"
 
 #ifdef __cplusplus
@@ -29,8 +32,7 @@ extern "C" {
 struct capture_script_t
 {
     bool        is_debug;
-    std::string exec;
-    std::string result;
+    std::string command;
     Surface     surface;
 
     capture_script_t() : is_debug(false) {}
@@ -42,8 +44,7 @@ struct capture_script_t
     void clear(void)
     {
         is_debug = false;
-        exec.clear();
-        result.clear();
+        command.clear();
         surface.reset();
     }
 };
@@ -55,7 +56,7 @@ const char* capture_script_get_name(void)
 
 int capture_script_get_version(void)
 {
-    return 20220205;
+    return 20220214;
 }
 
 void* capture_script_init(const JsonObject & config)
@@ -65,11 +66,9 @@ void* capture_script_init(const JsonObject & config)
     auto ptr = std::make_unique<capture_script_t>();
 
     ptr->is_debug = config.getBoolean("debug", false);
-    ptr->exec = config.getString("exec");
-    ptr->result = config.getString("result");
+    ptr->command = config.getString("exec");
 
-    DEBUG("params: " << "exec = " << ptr->exec);
-    DEBUG("params: " << "result = " << ptr->result);
+    DEBUG("params: " << "exec = " << ptr->command);
 
     return ptr.release();
 }
@@ -86,22 +85,47 @@ int capture_script_frame_action(void* ptr)
     capture_script_t* st = static_cast<capture_script_t*>(ptr);
     if(st->is_debug) DEBUG("version: " << capture_script_get_version());
 
-    if(Systems::isFile(st->exec))
+    if(! Systems::isFile(st->command))
     {
-	std::string cmd = st->exec;
-	cmd.append(" ").append(st->result);
+        ERROR("not command present: " << st->command);
+        return -1;
+    }
 
-	system(cmd.c_str());
-	st->surface = Surface(st->result);
+    std::unique_ptr<FILE, decltype(pclose)*> pipe{ popen(st->command.c_str(), "r"), pclose };
 
+    if(!pipe)
+    {
+        ERROR("popen failed: " << st->command);
+        return -1;
+    }
+
+    char buffer[128];
+    std::string fileImage;
+                
+    while(!std::feof(pipe.get()))
+    {
+        if(std::fgets(buffer, sizeof(buffer), pipe.get()))
+            fileImage.append(buffer);
+    }
+        
+    if(fileImage.size() && fileImage.back() == '\n')
+        fileImage.erase(std::prev(fileImage.end()));
+
+    if(! Systems::isFile(fileImage))
+    {
+	ERROR("not file: " << fileImage);
+	// reinitialized plugin disabled
 	return 0;
     }
-    else
+
+    st->surface = Surface(fileImage);
+    if(! st->surface.isValid())
     {
-	ERROR("exec not found: " << st->exec);
+	ERROR("not image file: " << fileImage);
+	// reinitialized plugin disabled
+	return 0;
     }
 
-    // reinitialized plugin disabled
     return 0;
 }
 

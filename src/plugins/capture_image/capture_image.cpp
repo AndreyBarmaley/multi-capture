@@ -90,6 +90,9 @@ int capture_image_frame_action(void* ptr)
     capture_image_t* st = static_cast<capture_image_t*>(ptr);
     if(st->is_debug) DEBUG("version: " << capture_image_get_version());
 
+    if(st->is_static && st->surface.isValid())
+	return 0;
+
     if(! st->lock.empty() && Systems::isFile(st->lock))
     {
 	ERROR("skip read, lock present: " << st->lock);
@@ -98,15 +101,7 @@ int capture_image_frame_action(void* ptr)
 
     if(Systems::isFile(st->file))
     {
-	if(st->is_static)
-	{
-	    if(! st->surface.isValid())
-		st->surface = Surface(st->file);
-	}
-	else
-	{
-	    st->surface = Surface(st->file);
-	}
+	st->surface = Surface(st->file);
 
 	if(st->surface.isValid())
 	    return 0;
