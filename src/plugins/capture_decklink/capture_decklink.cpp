@@ -25,6 +25,7 @@
 #include <atomic>
 #include <algorithm>
 
+#include "SDL2_rotozoom.h"
 #include "../../settings.h"
 
 #include "DeckLinkAPIDispatch.cpp"
@@ -417,7 +418,7 @@ struct DeckLinkDevice : public IDeckLinkInputCallback
 	}
     }
 
-    bool startCapture(void)
+    bool startCapture(BMDDisplayMode displayMode, bool formatDetection)
     {
 	if(S_OK != deckInput->SetCallback(this))
 	{
@@ -425,7 +426,11 @@ struct DeckLinkDevice : public IDeckLinkInputCallback
 	    return false;
 	}
 
-	if(S_OK != deckInput->EnableVideoInput(bmdModeNTSC, bmdFormat8BitYUV, bmdVideoInputFlagDefault | bmdVideoInputEnableFormatDetection))
+        BMDVideoInputFlags inputFlags = bmdVideoInputFlagDefault;
+        if(formatDetection)
+            inputFlags |= bmdVideoInputEnableFormatDetection;
+
+	if(S_OK != deckInput->EnableVideoInput(displayMode, bmdFormat8BitYUV, inputFlags))
 	{
     	    ERROR("Failed to switch video mode");
 	    return false;
@@ -679,11 +684,12 @@ struct DeckLinkDevice : public IDeckLinkInputCallback
 struct capture_decklink_t
 {
     bool 	is_debug;
+    bool        deinterlace;
 
     DeckLinkDevice device;
     Surface surface;
 
-    capture_decklink_t() : is_debug(false)
+    capture_decklink_t() : is_debug(false), deinterlace(false)
     {
     }
 
@@ -695,6 +701,7 @@ struct capture_decklink_t
     void clear(void)
     {
 	is_debug = false;
+        deinterlace = false;
 
 	surface.reset();
 	device.reset();
@@ -708,7 +715,7 @@ const char* capture_decklink_get_name(void)
 
 int capture_decklink_get_version(void)
 {
-    return 20220214;
+    return 20220215;
 }
 
 void* capture_decklink_init(const JsonObject & config)
@@ -719,10 +726,16 @@ void* capture_decklink_init(const JsonObject & config)
 
     int dev_index = config.getInteger("device", 0);
     std::string connector = config.getString("connection", "hdmi");
+    auto displayMode = name2displayMode(config.getString("display:mode", "ntsc"));
+    auto formatDetection = config.getBoolean("format:detection", true);
     ptr->is_debug = config.getBoolean("debug", false);
+    ptr->deinterlace = config.getBoolean("deinterlace", false);
 
     DEBUG("params: " << "device = " << dev_index);
     DEBUG("params: " << "connection = " << connector);
+    DEBUG("params: " << "display:mode = " << displayMode2name(displayMode));
+    DEBUG("params: " << "format:detection = " << String::Bool(formatDetection));
+    DEBUG("params: " << "deinterlace = " << String::Bool(ptr->deinterlace));
 
     if(! ptr->device.init(dev_index, connector))
 	return nullptr;
@@ -730,7 +743,7 @@ void* capture_decklink_init(const JsonObject & config)
     ptr->device.debugInfo();
     if(ptr->is_debug) ptr->device.dumpDisplayModes();
 
-    if(! ptr->device.startCapture())
+    if(! ptr->device.startCapture(displayMode, formatDetection))
 	return nullptr;
 
     return ptr.release();
@@ -777,6 +790,15 @@ int capture_decklink_frame_action(void* ptr)
                             st->device.imageWidth, st->device.imageHeight,
                             32, st->device.imageRowBytes, Bmask, Gmask, Rmask, Amask);
 #endif
+
+    if(st->deinterlace)
+    {
+        auto sf2 = zoomSurface(sf, 1.0, 0.5, 0);
+        auto sf3 = zoomSurface(sf2, 1.0, 2.0, 1);
+        std::swap(sf3, sf);
+        SDL_FreeSurface(sf2);
+        SDL_FreeSurface(sf3);
+    }
 
     st->surface = Surface::copy(sf);
     return 0;

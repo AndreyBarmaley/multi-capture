@@ -3,5 +3,8 @@
     "tick":	50,
     "device":	0,
     "connection": "hdmi",
-    "scale":	true
+    "format:detection": true,
+    "#display:mode": "HD1080p50",
+    "#deinterlace": false,
+    "scale":	true,
 }
