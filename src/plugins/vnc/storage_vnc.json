@@ -1,0 +1,8 @@
+{
+    "debug":	true,
+    "port":	5909,
+    "#threads":  2,
+    "noauth":  true,
+    "#passwdfile": "",
+    "#password": ""
+}

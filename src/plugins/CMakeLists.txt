@@ -8,6 +8,7 @@ add_subdirectory(capture_script)
 add_subdirectory(storage_file)
 add_subdirectory(storage_script)
 add_subdirectory(signal_test_thread)
+add_subdirectory(vnc)
 
 if(WITH_FLYCAP_PLUGIN)
     add_subdirectory(capture_flycap)

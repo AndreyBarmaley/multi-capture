@@ -21,6 +21,7 @@
  ***************************************************************************/
 
 #include <clocale>
+#include <exception>
 
 #include "settings.h"
 #include "mainscreen.h"
@@ -54,9 +55,7 @@ int main(int argc, char **argv)
 {
     LogWrapper::init("multi_capture", argv[0]);
 
-#ifndef ANDROID
     try
-#endif
     {
         Systems::setLocale(LC_ALL, "");
 	Systems::setLocale(LC_NUMERIC, "C"); // fix xml parsing decimal point
@@ -101,10 +100,13 @@ int main(int argc, char **argv)
 	    ERROR("config not found: " << config);
 	}
     }
-#ifndef ANDROID
+    catch(const std::exception & err)
+    {
+        ERROR("exception: " << err.what());
+    }
     catch(Engine::exception &)
     {
     }
-#endif
+
     return EXIT_SUCCESS;
 }

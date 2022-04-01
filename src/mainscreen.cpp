@@ -308,8 +308,11 @@ bool MainScreen::userEvent(int act, void* data)
             if(auto plugin = static_cast<StoragePlugin*>(data))
             {
                 SurfaceLabel sl = plugin->getSurfaceLabel();
-                std::string label = StringFormat("%1:/%2").arg(plugin->pluginName()).arg(sl.label());
-                addImageGallery(sl.surface(), label);
+                if(sl.surface().isValid())
+                {
+                    std::string label = StringFormat("%1:/%2").arg(plugin->pluginName()).arg(sl.label());
+                    addImageGallery(sl.surface(), label);
+                }
             }
             return true;
 

@@ -28,10 +28,16 @@
 #include "libswe.h"
 using namespace SWE;
 
-#define VERSION 20220214
+#define VERSION 20220315
 enum { ActionNone = 11110, ActionFrameComplete = 11111, ActionPluginReset = 11112,
         ActionUnused11113 = 11113, ActionSignalBack = 11114, ActionStoreComplete = 11115,
         ActionSessionReset = 11116, ActionProgramExit = 11119 };
+
+#ifdef SWE_SDL12
+#include "SDL_rotozoom.h"
+#else
+#include "SDL2_rotozoom.h"
+#endif
 
 struct SessionIdName
 {
@@ -50,17 +56,5 @@ namespace Settings
     std::string		dataJson(const std::string &);
     std::string		dataPath(void);
 }
-
-#if SDL_BYTEORDER == SDL_BIG_ENDIAN
-#define Rmask 0xff000000
-#define Gmask 0x00ff0000
-#define Bmask 0x0000ff00
-#define Amask 0x000000ff
-#else
-#define Rmask 0x000000ff
-#define Gmask 0x0000ff00
-#define Bmask 0x00ff0000
-#define Amask 0xff000000
-#endif
 
 #endif

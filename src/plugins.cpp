@@ -274,8 +274,8 @@ bool CapturePlugin::isScaleImage(void) const
 
 bool CapturePlugin::isTickEvent(u32 ms) const
 {
-    return 0 <= tickPeriod &&
-            ttCapture.check(ms, tickPeriod);
+    return 0 == tickPeriod ||
+        (0 < tickPeriod && ttCapture.check(ms, tickPeriod));
 }
 
 Surface CapturePlugin::generateBlueScreen(const std::string & label) const
@@ -541,7 +541,7 @@ int StoragePlugin::setSurface(const Surface & sf)
                 threadAction = false;
 	    }
 
-	    if(0 == threadResult)
+	    if(0 <= threadResult)
 	        return fun_set_surface(data, sf);
         }
     }
