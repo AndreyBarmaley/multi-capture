@@ -10,7 +10,8 @@ You can also set a signal plugin and an storage action for each video source.
 ![capture_fireware](https://github.com/AndreyBarmaley/multi-capture/wiki/Capture-plugins#capture_fireware) - read fireware stream  
 ![capture_ffmpeg](https://github.com/AndreyBarmaley/multi-capture/wiki/Capture-plugins#capture_ffmpeg) - read ffmpeg stream  
 ![capture_flycap](https://github.com/AndreyBarmaley/multi-capture/wiki/Capture-plugins#capture_flycap) - get image from FlyCapture API  
-![capture_decklink](https://github.com/AndreyBarmaley/multi-capture/wiki/Capture-plugins#capture_decklink) - get image from BlackMagic API
+![capture_decklink](https://github.com/AndreyBarmaley/multi-capture/wiki/Capture-plugins#capture_decklink) - get image from BlackMagic API  
+![capture_vnc](https://github.com/AndreyBarmaley/multi-capture/wiki/Capture-plugins#capture_vnc) - get image from remote VNC service  
 
 # signal plugins
 ![signal_dbus_event](https://github.com/AndreyBarmaley/multi-capture/wiki/Signal-plugins#signal_dbus_event) - get signal from dbus  
@@ -19,6 +20,7 @@ You can also set a signal plugin and an storage action for each video source.
 # storage plugins
 ![storage_file](https://github.com/AndreyBarmaley/multi-capture/wiki/Storage-plugins#storage_file) - save screenshot to file  
 ![storage_script](https://github.com/AndreyBarmaley/multi-capture/wiki/Storage-plugins#storage_script) - save screenshot with script action  
+![storage_vnc](https://github.com/AndreyBarmaley/multi-capture/wiki/Storage-plugins#storage_vnc) - create VNC service    
 
 # example for 9 sources
 ![screenshot](https://user-images.githubusercontent.com/8620726/150244073-7deda86c-92e9-4b02-9644-215706135363.png)  
