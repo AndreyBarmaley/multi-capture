@@ -16,6 +16,7 @@ You can also set a signal plugin and an storage action for each video source.
 # signal plugins
 ![signal_dbus_event](https://github.com/AndreyBarmaley/multi-capture/wiki/Signal-plugins#signal_dbus_event) - get signal from dbus  
 ![signal_input_event](https://github.com/AndreyBarmaley/multi-capture/wiki/Signal-plugins#signal_input_event) - get signal from linux /dev/input  
+![signal_gui_button](https://github.com/AndreyBarmaley/multi-capture/wiki/Signal-plugins#signal_gui_button) - custom gui button on screen  
 
 # storage plugins
 ![storage_file](https://github.com/AndreyBarmaley/multi-capture/wiki/Storage-plugins#storage_file) - save screenshot to file  
