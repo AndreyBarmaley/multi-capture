@@ -22,7 +22,7 @@ You can also set a signal plugin and an storage action for each video source.
 ![storage_file](https://github.com/AndreyBarmaley/multi-capture/wiki/Storage-plugins#storage_file) - save screenshot to file  
 ![storage_video](https://github.com/AndreyBarmaley/multi-capture/wiki/Storage-plugins#storage_video) - save ffmpeg video  
 ![storage_script](https://github.com/AndreyBarmaley/multi-capture/wiki/Storage-plugins#storage_script) - save screenshot with script action  
-![storage_vnc](https://github.com/AndreyBarmaley/multi-capture/wiki/Storage-plugins#storage_vnc) - create VNC service    
+![storage_vnc](https://github.com/AndreyBarmaley/multi-capture/wiki/Storage-plugins#storage_vnc) - create VNC stream service    
 
 # example for 9 sources
 ![screenshot](https://user-images.githubusercontent.com/8620726/150244073-7deda86c-92e9-4b02-9644-215706135363.png)  
