@@ -187,8 +187,7 @@ config file
             "type": "storage_file",
 
             "debug":    0,
-            "format:description": "strftime",
-            "format": "/var/tmp/${label}/%Y%m%d_%H%M%S.png",
+            "filename": "/var/tmp/${label}/%Y%m%d_%H%M%S.png",
             "signals":  [ "mouse:click" ]
         }
     ]

@@ -52,7 +52,7 @@
 	    "type": 	"capture_image",
 
 	    "debug":    0,
-	    "file":     "/var/tmp/back.png",
+	    "image":     "/var/tmp/back.png",
 	    "frames:sec": 1,
 	    "static":   false,
 	    "scale":    true
@@ -62,7 +62,7 @@
 	    "type": 	"capture_image",
 
 	    "debug":    0,
-	    "file":     "/var/tmp/tmp462501.jpg",
+	    "image":    "/var/tmp/tmp462501.jpg",
 	    "static":   true,
 	    "scale":    true
 	},
@@ -80,8 +80,7 @@
 	    "type":	"storage_file",
 
 	    "debug":    0,
-	    "format:description": "strftime",
-	    "format": "/var/tmp/input3/%Y%m%d_%H%M%S.png",
+	    "filename": "/var/tmp/input3/%Y%m%d_%H%M%S.png",
 	    "signals":	[ "mouse:click" ]
 	},
 	{
@@ -99,8 +98,7 @@
 	    "type":	"storage_file",
 
 	    "debug":    1,
-	    "format:description": "strftime",
-	    "format": "/var/tmp/input4/%Y%m%d_%H%M%S.png",
+	    "filename": "/var/tmp/input4/%Y%m%d_%H%M%S.png",
 	    "signals":	[ "mouse:click" ]
 	}
     ]
