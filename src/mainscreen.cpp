@@ -54,8 +54,7 @@ MainScreen::MainScreen(const JsonObject & jo) : DisplayWindow(Color::Black), con
 	    {
 		try
                 {
-		    auto ptr = new VideoWindow(WindowParams(*jo2, this), *this);
-		    windows.emplace_back(ptr);
+		    windows.emplace_back(std::make_unique<VideoWindow>(WindowParams(*jo2, this), *this));
                 }
                 catch(const std::invalid_argument & err)
                 {
@@ -72,11 +71,11 @@ MainScreen::MainScreen(const JsonObject & jo) : DisplayWindow(Color::Black), con
     for(auto & obj : getPluginsType("signal_"))
     {
 	PluginParams params(*obj);
-	DEBUG("load signal: " << params.name);
+	DEBUG("load signal plugin: " << params.name);
 
     	if(params.config.isValid())
     	{
-	    signals.emplace_back(new SignalPlugin(params, *this));
+	    signals.emplace_back(std::make_unique<SignalPlugin>(params, *this));
 	}
 	else
 	{
@@ -299,20 +298,18 @@ bool MainScreen::userEvent(int act, void* data)
             {
                 sid = ptr->id;
                 session = ptr->name;
-                // broadcast event
-	        return false;
-            }
-            break;
 
-        case ActionStoreComplete:
+                for(auto & win: windows)
+                    win->actionSessionReset(*ptr);
+            }
+	    return true;
+
+        case ActionPushGallery:
             if(auto plugin = static_cast<StoragePlugin*>(data))
             {
                 SurfaceLabel sl = plugin->getSurfaceLabel();
                 if(sl.surface().isValid())
-                {
-                    std::string label = StringFormat("%1:/%2").arg(plugin->pluginName()).arg(sl.label());
-                    addImageGallery(sl.surface(), label);
-                }
+                    addImageGallery(sl.surface(), sl.label());
             }
             return true;
 
@@ -322,9 +319,9 @@ bool MainScreen::userEvent(int act, void* data)
     return false;
 }
 
-void MainScreen::addImageGallery(const Surface & sf, const std::string & label)
+void MainScreen::addImageGallery(const Surface & image, const std::string & location)
 {
-    if(gallery) gallery->addImage(sf, label);
+    if(gallery) gallery->addImage(image, location);
 }
 
 std::string MainScreen::formatString(const std::string & format) const

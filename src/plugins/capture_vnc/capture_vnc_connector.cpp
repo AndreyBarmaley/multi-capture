@@ -26,7 +26,7 @@
 #include <fstream>
 #include <algorithm>
 
-#include "../../../settings.h"
+#include "../../settings.h"
 #include "capture_vnc_connector.h"
 
 using namespace std::chrono_literals;
@@ -34,8 +34,8 @@ using namespace std::chrono_literals;
 namespace RFB
 {
     /* Connector */
-    ClientConnector::ClientConnector(const SWE::JsonObject* jo)
-        : streamIn(nullptr), streamOut(nullptr), debug(0), sdlFormat(0), loopMessage(true), config(jo)
+    ClientConnector::ClientConnector(const SWE::JsonObject & jo)
+        : streamIn(nullptr), streamOut(nullptr), debug(0), sdlFormat(0), loopMessage(true), config(& jo)
     {
         debug = config->getInteger("debug", 0);
 
@@ -185,9 +185,13 @@ namespace RFB
         serverFormat.bitsPerPixel = recvInt8();
         serverFormat.depth = recvInt8();
         if(0 != recvInt8())
+        {
             serverFormat.flags |= PixelFormat::BigEndian;
+        }
         if(0 != recvInt8())
+        {
             serverFormat.flags |= PixelFormat::TrueColor;
+        }
         serverFormat.redMax = recvIntBE16();
         serverFormat.greenMax = recvIntBE16();
         serverFormat.blueMax = recvIntBE16();
@@ -270,48 +274,53 @@ namespace RFB
 
     void ClientConnector::messages(void)
     {
-        auto thread = std::thread([this]
-        {
-            if(this->debug)
-                DEBUG("RFB 1.7.5" << ", wait remote messages...");
-
-            while(this->loopMessage)
-            {
-                if(this->hasInput())
-                {
-                    int msgType = this->recvInt8();
-
-                    switch(msgType)
-                    {
-                        case SERVER_FB_UPDATE:          this->serverFBUpdateEvent(); break;
-                        case SERVER_SET_COLOURMAP:      this->serverSetColorMapEvent(); break;
-                        case SERVER_BELL:               this->serverBellEvent(); break;
-                        case SERVER_CUT_TEXT:           this->serverCutTextEvent(); break;
-
-                        default:
-                        {
-                            ERROR("unknown message type: " << SWE::String::hex(msgType, 2));
-                            this->loopMessage = false;
-                        }
-                    }
-                }
-                else
-                {
-                    std::this_thread::sleep_for(5ms);
-                }
-            }
-        });
-
         std::initializer_list<int> encodings = { ENCODING_LAST_RECT,
                                         ENCODING_ZRLE, ENCODING_TRLE, ENCODING_HEXTILE,
                                         ENCODING_CORRE, ENCODING_RRE, ENCODING_RAW };
 
         clientSetEncodings(encodings);
         clientPixelFormat();
-        clientFrameBufferUpdateReq(fbPtr->region());
+        clientFrameBufferUpdateReq(false);
 
-        if(thread.joinable())
-            thread.join();
+        if(this->debug)
+            DEBUG("RFB 1.7.5" << ", wait remote messages...");
+
+        auto cur = std::chrono::system_clock::now();
+
+        while(this->loopMessage)
+        {
+            auto now = std::chrono::system_clock::now();
+
+            if(std::chrono::milliseconds(2500) <= now - cur)
+            {
+                // request incr update
+                clientFrameBufferUpdateReq(true);
+                cur = now;
+            }
+
+            if(this->hasInput())
+            {
+                int msgType = this->recvInt8();
+
+                switch(msgType)
+                {
+                    case SERVER_FB_UPDATE:          this->serverFBUpdateEvent(); break;
+                    case SERVER_SET_COLOURMAP:      this->serverSetColorMapEvent(); break;
+                    case SERVER_BELL:               this->serverBellEvent(); break;
+                    case SERVER_CUT_TEXT:           this->serverCutTextEvent(); break;
+
+                    default:
+                    {
+                        ERROR("unknown message type: " << SWE::String::hex(msgType, 2));
+                        this->loopMessage = false;
+                    }
+                }
+            }
+            else
+            {
+                std::this_thread::sleep_for(5ms);
+            }
+        }
     }
 
     void ClientConnector::clientPixelFormat(void)
@@ -360,14 +369,19 @@ namespace RFB
         sendFlush();
     }
 
-    void ClientConnector::clientFrameBufferUpdateReq(const Region & reg)
+    void ClientConnector::clientFrameBufferUpdateReq(bool incr)
+    {
+        clientFrameBufferUpdateReq(fbPtr->region(), incr);
+    }
+
+    void ClientConnector::clientFrameBufferUpdateReq(const Region & reg, bool incr)
     {
         if(debug)
             DEBUG("RFB 1.7.4.3" << ", region [" << reg.x << "," << reg.y << "," << reg.w << "," << reg.h << "]");
 
         // send framebuffer update request
         sendInt8(CLIENT_REQUEST_FB_UPDATE);
-        sendInt8(0);
+        sendInt8(incr ? 1 : 0);
         sendIntBE16(reg.x);
         sendIntBE16(reg.y);
         sendIntBE16(reg.w);
@@ -686,16 +700,15 @@ namespace RFB
         }
 
         const Size bsz = Size(64, 64);
-        for(auto & reg0: Region::divideBlocks(reg, bsz))
-        {
-            if(zrle)
-                zlibInflateStart();
 
+        if(zrle)
+            zlibInflateStart();
+
+        for(auto & reg0: Region::divideBlocks(reg, bsz))
             recvDecodingTRLERegion(reg0, zrle);
 
-            if(zrle)
-                zlibInflateStop();
-        }
+        if(zrle)
+            zlibInflateStop();
     }
 
     void ClientConnector::recvDecodingTRLERegion(const Region & reg, bool zrle)
@@ -720,6 +733,9 @@ namespace RFB
                 auto pixel = recvCPixel();
                 fbPtr->setPixel(reg.topLeft() + coord, pixel);
             }
+
+            if(4 < debug)
+                DEBUG("type: " << "raw" << ": compete");
         }
         else
         // trle solid
@@ -734,6 +750,9 @@ namespace RFB
             }
 
             fbPtr->fillPixel(reg, solid);
+
+            if(4 < debug)
+                DEBUG("type: " << "solid" << ": compete");
         }
         else
         if(2 <= type && type <= 16)
@@ -780,12 +799,15 @@ namespace RFB
                         DEBUG("type: " << "packed palette" << ", pos: [" << pos.x << "," << pos.y << "], index: " << index);
                     }
 
-                    if(index > palette.size())
+                    if(index >= palette.size())
                         throw std::runtime_error(SWE::StringFormat("%1: out of range, index: %2, palette size: %3").arg(__FUNCTION__).arg(index).arg(palette.size()));
 
                     fbPtr->setPixel(pos, palette[index]);
                 }
             }
+
+            if(4 < debug)
+                DEBUG("type: " << "packed palette" << ": compete");
         }
         else
         if((17 <= type && type <= 127) || type == 129)
@@ -821,9 +843,12 @@ namespace RFB
                         throw std::runtime_error(SWE::StringFormat("%1: out of range, run length: %2").arg(__FUNCTION__).arg(runLength));
                 }
             }
+
+            if(4 < debug)
+                DEBUG("type: " << "plain rle" << ": compete");
         }
         else
-        if(130 <= type && type <= 255)
+        if(130 <= type)
         {
             size_t palsz = type - 128;
             std::vector<int> palette(palsz);
@@ -883,6 +908,9 @@ namespace RFB
                     }
                 }
             }
+
+            if(4 < debug)
+                DEBUG("type: " << "rle palette" << ": compete");
         }
     }
 

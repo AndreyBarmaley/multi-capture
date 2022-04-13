@@ -10,4 +10,4 @@ target_link_libraries(capture_fireware ${FIREWARE_LIBRARIES})
 target_link_libraries(capture_fireware libswe)
 
 set_target_properties(capture_fireware PROPERTIES PREFIX "")
-set_target_properties(capture_fireware PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../../..)
+set_target_properties(capture_fireware PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../../../dist/plugins)

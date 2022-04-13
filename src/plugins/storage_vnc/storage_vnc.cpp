@@ -28,17 +28,18 @@
 
 using namespace std::chrono_literals;
 
-#include "../../../settings.h"
+#include "../../settings.h"
 #include "storage_vnc_connector.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+const int storage_vnc_version = PLUGIN_API;
+
 struct storage_vnc_t
 {
     int        debug;
-    std::string label;
     Network::TCPServer sn;
     Surface	surface;
     int         port;
@@ -48,7 +49,7 @@ struct storage_vnc_t
     const SWE::JsonObject* config;
     std::unique_ptr<RFB::ServerConnector> vnc;
 
-    storage_vnc_t() : debug(0), label("vnc"), port(0), shutdown(false), config(nullptr)
+    storage_vnc_t() : debug(0), port(0), shutdown(false), config(nullptr)
     {
     }
 
@@ -148,24 +149,20 @@ struct storage_vnc_t
     }
 };
 
-const char* storage_vnc_get_name(void)
-{
-    return "storage_vnc";
-}
-
-int storage_vnc_get_version(void)
-{
-    return 20220310;
-}
-
 void* storage_vnc_init(const JsonObject & config)
 {
-    VERBOSE("version: " << storage_vnc_get_version());
+    VERBOSE("version: " << storage_vnc_version);
     auto ptr = std::make_unique<storage_vnc_t>();
     ptr->debug = config.getInteger("debug", 0);
     ptr->port = config.getInteger("port", 5900);
+    bool noauth = config.getBoolean("noauth");
+    std::string passwdfile = config.getString("passwdfile");
     ptr->config = & config;
+
     DEBUG("params: " << "port = " << ptr->port);
+    DEBUG("params: " << "noauth = " << String::Bool(noauth));
+    if(! passwdfile.empty())
+        DEBUG("params: " << "passwdfile = " << passwdfile);
 
     if(! ptr->init())
     {
@@ -180,7 +177,7 @@ void storage_vnc_quit(void* ptr)
 {
     storage_vnc_t* st = static_cast<storage_vnc_t*>(ptr);
 
-    if(st->debug) DEBUG("version: " << storage_vnc_get_version());
+    if(st->debug) DEBUG("version: " << storage_vnc_version);
 
     st->shutdown = true;
     if(st->vnc) st->vnc->shutdown();
@@ -188,54 +185,122 @@ void storage_vnc_quit(void* ptr)
     delete st;
 }
 
-int storage_vnc_store_action(void* ptr)
+// PluginResult::Reset, PluginResult::Failed, PluginResult::DefaultOk, PluginResult::NoAction
+int storage_vnc_store_action(void* ptr, const std::string & signal)
 {
     storage_vnc_t* st = static_cast<storage_vnc_t*>(ptr);
+    if(! st->surface.isValid())
+    {
+        ERROR("invalid surface");
+        return PluginResult::Failed;
+    }
 
-    if(3 < st->debug) DEBUG("version: " << storage_vnc_get_version());
-
-    // always store
-    return 1;
-}
-
-int storage_vnc_set_surface(void* ptr, const Surface & sf)
-{
-    auto st = static_cast<storage_vnc_t*>(ptr);
+    if(3 < st->debug) DEBUG("version: " << storage_vnc_version);
 
     const std::lock_guard<std::mutex> lock(st->change);
-    if(3 < st->debug) DEBUG("version: " << storage_vnc_get_version());
-    st->surface.setSurface(sf);
     if(st->vnc)
         st->vnc->setFrameBuffer(st->surface);
 
-    return 0;
+    // always store
+    return PluginResult::NoAction;
 }
 
 int storage_vnc_session_reset(void* ptr, const SessionIdName & ss)
 {
     storage_vnc_t* st = static_cast<storage_vnc_t*>(ptr);
 
-    if(st->debug) DEBUG("version: " << storage_vnc_get_version());
+    if(st->debug) DEBUG("version: " << storage_vnc_version);
 
     return 0;
 }
 
-const std::string & storage_vnc_get_label(void* ptr)
+bool storage_vnc_get_value(void* ptr, int type, void* val)
 {
-    storage_vnc_t* st = static_cast<storage_vnc_t*>(ptr);
+    switch(type)
+    {
+        case PluginValue::PluginName:
+            if(auto res = static_cast<std::string*>(val))
+            {
+                res->assign("storage_vnc");
+                return true;
+            }
+            break;
+    
+        case PluginValue::PluginVersion:
+            if(auto res = static_cast<int*>(val))
+            {
+                *res = storage_vnc_version;
+                return true;
+            }
+            break;
 
-    if(st->debug) DEBUG("version: " << storage_vnc_get_version());
+        case PluginValue::PluginType:
+            if(auto res = static_cast<int*>(val))
+            {
+                *res = PluginType::Storage;
+                return true;
+            }
+            break;
 
-    return st->label;
+        default:
+            break;
+    }
+
+    if(ptr)
+    {
+        storage_vnc_t* st = static_cast<storage_vnc_t*>(ptr);
+        if(4 < st->debug)
+            DEBUG("version: " << storage_vnc_version << ", type: " << type);
+
+        switch(type)
+        {
+            case PluginValue::StorageLocation:
+                if(auto res = static_cast<std::string*>(val))
+                {
+                    res->assign("vnc:").append(std::to_string(st->port));
+                    return true;
+                }
+                break;
+
+            case PluginValue::StorageSurface:
+                if(auto res = static_cast<Surface*>(val))
+                {
+                    const std::lock_guard<std::mutex> lock(st->change);
+                    res->setSurface(st->surface);
+                    return true;
+                }
+                break;
+
+            default: break;
+        }
+    }
+
+    return false;
 }
 
-const Surface & storage_vnc_get_surface(void* ptr)
+bool storage_vnc_set_value(void* ptr, int type, const void* val)
 {
     storage_vnc_t* st = static_cast<storage_vnc_t*>(ptr);
+    if(4 < st->debug)
+        DEBUG("version: " << storage_vnc_version << ", type: " << type);
 
-    if(st->debug) DEBUG("version: " << storage_vnc_get_version());
+    switch(type)
+    {
+        case PluginValue::StorageSurface:
+            if(auto res = static_cast<const Surface*>(val))
+            {
+                const std::lock_guard<std::mutex> lock(st->change);
+                st->surface = *res;
+                // auto action
+                DisplayScene::pushEvent(nullptr, ActionStorageBack, st);
+                return true;
+            }
+            break;
 
-    return st->surface;
+        default: break;
+    }
+
+    return false;
 }
 
 #ifdef __cplusplus

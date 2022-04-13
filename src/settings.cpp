@@ -36,7 +36,7 @@ std::string Settings::programVersion(void)
 {
     std::string version;
 #ifdef BUILDDATE
-    version.append(BUILDDATE);
+    version.append(std::to_string(VERSION));
 #ifdef SRCREVISION
     version.append(".").append(SRCREVISION);
 #endif

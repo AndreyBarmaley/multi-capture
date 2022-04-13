@@ -1,0 +1,11 @@
+{
+    "debug":	0,
+    "host":	"hostname",
+    "port":	5900,
+    "#shared":  false,
+    "#password": 12345,
+    "#network:debug": "netstream.dump",
+    "tick":     30,
+    "scale":	true,
+    "init:timeout": 5000
+}

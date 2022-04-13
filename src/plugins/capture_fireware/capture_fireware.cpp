@@ -20,6 +20,9 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
+#include <thread>
+#include <chrono>
+#include <atomic>
 #include <iomanip>
 #include <sstream>
 #include <cstring>
@@ -29,6 +32,9 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+using namespace std::chrono_literals;
+const int capture_fireware_version = PLUGIN_API;
 
 #include <sys/poll.h>
 
@@ -114,6 +120,7 @@ public:
     {
         return decoder.get();
     }
+
     void setRGBData(int w, int h, unsigned char* data)
     {
 	int len = w * h * 3;
@@ -189,8 +196,7 @@ public:
 
 struct capture_fireware_t
 {
-    bool 	is_debug;
-    Surface 	surface;
+    int 	debug;
 
     std::unique_ptr<raw1394_handle, decltype(raw1394_destroy_handle)*> raw1394;
     struct pollfd	raw1394_poll;
@@ -207,9 +213,16 @@ struct capture_fireware_t
     int			bandwidth;
     int			receiving;
 
-    capture_fireware_t() : is_debug(false), 
+    size_t              framesPerSec;
+    std::thread         thread;
+    std::atomic<bool>   shutdown;
+            
+    std::list<Surface>  frames;
+
+    capture_fireware_t() : debug(0),
 	raw1394{ nullptr, raw1394_destroy_handle },
-	guid(0), node(-1), port(-1), type(0), input(-1), output(-1), channel(-1), bandwidth(0), receiving(0)
+	guid(0), node(-1), port(-1), type(0), input(-1), output(-1), channel(-1), bandwidth(0), receiving(0),
+        framesPerSec(25), shutdown(false)
     {
         raw1394_poll = {0};
     }
@@ -273,7 +286,7 @@ struct capture_fireware_t
                 	port = pi;
 			uint64_t guid = rom1394_get_guid(raw1394.get(), ni);
 
-			VERBOSE("guid: " << String::hex64(guid));
+			VERBOSE("selected guid: " << String::hex64(guid));
             	    }
 
             	    rom1394_free_directory(& rom_dir);
@@ -349,7 +362,7 @@ struct capture_fireware_t
     {
 	if(! device_select())
 	{
-    	    ERROR("No AV/C devices found.");
+    	    ERROR("No AV/C devices found");
 	    return false;
 	}
 
@@ -394,6 +407,13 @@ struct capture_fireware_t
 
     void clear(void)
     {
+        shutdown = true;
+        if(thread.joinable())
+            thread.join();
+
+        framesPerSec = 25;
+        frames.clear();
+
 	if(raw1394)
 	{
     	    iec61883_ptr.reset();
@@ -404,7 +424,7 @@ struct capture_fireware_t
     	    raw1394_poll = {0};
 	}
 
-	is_debug = false;
+	debug = 0;
 	guid = 0;
 	node = -1;
 	port = -1;
@@ -414,29 +434,133 @@ struct capture_fireware_t
 	channel = -1;
 	bandwidth = 0;
 	receiving = 0;
-    	surface.reset();
+    }
+
+    int frameToSurface(Surface & result)
+    {
+        int ret = 0;
+
+        while((ret = poll(& raw1394_poll, 1, 200)) < 0)
+        {
+            if(! (errno == EAGAIN || errno == EINTR))
+	    {
+    	        ERROR("raw1394 poll error occurred");
+    	        return PluginResult::Reset;
+            }
+        }
+
+        if(ret > 0 && ((raw1394_poll.revents & POLLIN) || (raw1394_poll.revents & POLLPRI)))
+        {
+	    receiving = 1;
+            raw1394_loop_iterate(raw1394.get());
+        
+            if(auto info = iec61883_ptr->getRGBData())
+	    {
+                // dump video frame
+                if(4 < debug)
+                {
+                    VERBOSE("image width: " << info->width << ", height: " << info->height <<
+                        ", data size: " << info->width * 3 * info->height << ", pixelFormat: " << "RGB24");
+                }
+
+#ifdef SWE_SDL12
+    	        SDL_Surface* sf = SDL_CreateRGBSurfaceFrom(info->rgb.get(), info->width, info->height,
+				24, info->width * 3, Surface::defRMask(), Surface::defGMask(), Surface::defBMask(), 0);
+#else
+    	        SDL_Surface* sf = SDL_CreateRGBSurfaceWithFormatFrom(info->rgb.get(), info->width, info->height,
+				24, info->width * 3, SDL_PIXELFORMAT_RGB24);
+#endif
+                result = Surface::copy(sf);
+	    }
+
+	    return PluginResult::DefaultOk;
+        }
+        else
+        if(receiving)
+        {
+            ERROR("no more input data available");
+        }
+
+        return PluginResult::Failed;
+    }
+
+    void start(void)
+    {
+        shutdown = false;
+        // frames loop
+        thread = std::thread([st = this]
+        {
+            Surface frame;
+            size_t delay = 10;
+            size_t duration = 1000 / st->framesPerSec;
+            auto point = std::chrono::steady_clock::now();
+    
+            while(! st->shutdown)
+            {
+                if(5 < st->frames.size())
+                {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(duration));
+                    point = std::chrono::steady_clock::now();
+                    continue;
+                }
+        
+                int res = st->frameToSurface(frame);
+
+                if(PluginResult::DefaultOk == res)
+                {
+                    auto now = std::chrono::steady_clock::now();
+                    auto timeMS = std::chrono::duration_cast<std::chrono::milliseconds>(now - point);
+
+                    if(4 < st->debug)
+                    {
+                        DEBUG("real frame time: " << timeMS.count() << "ms");
+                    }
+
+                    if(timeMS > std::chrono::milliseconds(duration))
+                    {
+                        delay--;
+                    }
+                    else
+                    if(timeMS < std::chrono::milliseconds(duration))
+                    {
+                        delay++;
+                    }
+                    
+                    st->frames.push_back(frame);
+                    DisplayScene::pushEvent(nullptr, ActionFrameComplete, st);
+                    point = now;
+                }
+                else
+                if(PluginResult::Reset == res)
+                {
+                    DisplayScene::pushEvent(nullptr, ActionCaptureReset, st);
+                    st->shutdown = true;
+                }
+
+                if(delay)
+                    std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+            }
+        });
     }
 };
 
-const char* capture_fireware_get_name(void)
-{
-    return "capture_fireware";
-}
-
-int capture_fireware_get_version(void)
-{
-    return 20220205;
-}
-
-
 void* capture_fireware_init(const JsonObject & config)
 {
-    VERBOSE("version: " << capture_fireware_get_version());
+    VERBOSE("version: " << capture_fireware_version);
 
     auto ptr = std::make_unique<capture_fireware_t>();
 
-    ptr->is_debug = config.getBoolean("debug", false);
+    ptr->debug = config.getInteger("debug", 0);
+    ptr->framesPerSec = config.getInteger("frames:sec", 25);
+    if(0 == ptr->framesPerSec || ptr->framesPerSec > 1000)
+    {
+        ERROR("frames:sec param incorrect, set default");
+        ptr->framesPerSec = 25;
+    }
+
     std::string strguid = config.getString("guid");
+
+    DEBUG("params: " << "frames:sec = " << ptr->framesPerSec);
 
     if(strguid.size() && strguid != "auto")
     {
@@ -466,67 +590,91 @@ void* capture_fireware_init(const JsonObject & config)
 	VERBOSE("started DV mode");
     }
 
+    ptr->start();
+
     return ptr.release();
 }
 
 void capture_fireware_quit(void* ptr)
 {
     capture_fireware_t* st = static_cast<capture_fireware_t*>(ptr);
-    if(st->is_debug) DEBUG("version: " << capture_fireware_get_version());
+    if(st->debug) DEBUG("version: " << capture_fireware_version);
 
     delete st;
 }
 
-int capture_fireware_frame_action(void* ptr)
+bool capture_fireware_get_value(void* ptr, int type, void* val)
 {
-    capture_fireware_t* st = static_cast<capture_fireware_t*>(ptr);
-    if(st->is_debug) DEBUG("version: " << capture_fireware_get_version());
-    int result = 0;
-
-    while((result = poll(& st->raw1394_poll, 1, 200)) < 0)
+    switch(type)
     {
-        if(! (errno == EAGAIN || errno == EINTR))
-	{
-    	    ERROR("raw1394 poll error occurred");
-    	    return -1;
+        case PluginValue::PluginName:
+            if(auto res = static_cast<std::string*>(val))
+            {
+                res->assign("capture_fireware");
+                return true;
+            }
+            break;
+    
+        case PluginValue::PluginVersion:
+            if(auto res = static_cast<int*>(val))
+            {
+                *res = capture_fireware_version;
+                return true;
+            }
+            break;
+
+        case PluginValue::PluginType:
+            if(auto res = static_cast<int*>(val))
+            {
+                *res = PluginType::Capture;
+                return true;
+            }
+            break;
+
+        default:
+            break;
+    }
+
+    if(ptr)
+    {
+        capture_fireware_t* st = static_cast<capture_fireware_t*>(ptr);
+        if(4 < st->debug)
+            DEBUG("version: " << capture_fireware_version << ", type: " << type);
+    
+        switch(type)
+        {
+            case PluginValue::CaptureSurface:
+                if(auto res = static_cast<Surface*>(val))
+                {
+                    if(! st->frames.empty())
+                    {
+                        res->setSurface(st->frames.front());
+                        st->frames.pop_front();
+                        return true;
+                    }
+                    return false;
+                }
+                break;
+
+            default: break;
         }
     }
 
-    if(result > 0 && ((st->raw1394_poll.revents & POLLIN) || (st->raw1394_poll.revents & POLLPRI)))
-    {
-	st->receiving = 1;
-        raw1394_loop_iterate(st->raw1394.get());
-        
-        if(auto info = st->iec61883_ptr->getRGBData())
-	{
-#if SDL_VERSION_ATLEAST(2,0,5)
-    	    SDL_Surface* sf = SDL_CreateRGBSurfaceWithFormatFrom(info->rgb.get(), info->width, info->height,
-				24, info->width * 3, SDL_PIXELFORMAT_RGB24);
-#else
-    	    SDL_Surface* sf = SDL_CreateRGBSurfaceFrom(info->rgb.get(), info->width, info->height,
-				24, info->width * 3, Rmask, Gmask, Bmask, Amask);
-#endif
-            st->surface = Surface::copy(sf);
-	}
-
-	return 0;
-    }
-    else
-    if(st->receiving)
-    {
-        ERROR("no more input data available");
-	return -1;
-    }
-
-    return -1;
+    return false;
 }
 
-const Surface & capture_fireware_get_surface(void* ptr)
+bool capture_fireware_set_value(void* ptr, int type, const void* val)
 {
     capture_fireware_t* st = static_cast<capture_fireware_t*>(ptr);
+    if(4 < st->debug)
+        DEBUG("version: " << capture_fireware_version << ", type: " << type);
 
-    if(st->is_debug) DEBUG("version: " << capture_fireware_get_version());
-    return st->surface;
+    switch(type)
+    {
+        default: break;
+    }
+
+    return false;
 }
 
 #ifdef __cplusplus

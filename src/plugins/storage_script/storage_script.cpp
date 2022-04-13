@@ -20,21 +20,27 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
+#include <mutex>
 #include "../../settings.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+const int storage_script_version = PLUGIN_API;
+
 struct storage_script_t
 {
-    bool        is_debug;
-    std::string label;
+    int         debug;
+    size_t      sessionId;
+    std::string sessionName;
     std::string exec;
-    std::string image;
+    std::string format;
+    std::string filename;
     Surface	surface;
+    std::mutex  change;
 
-    storage_script_t() : is_debug(false) {}
+    storage_script_t() : debug(0), sessionId(0) {}
     ~storage_script_t()
     {
 	clear();
@@ -42,36 +48,40 @@ struct storage_script_t
     
     void clear(void)
     {
-        is_debug = false;
-        label.clear();
+        debug = 0;
+        sessionId = 0;
+        sessionName.clear();
         exec.clear();
-        image.clear();
+        filename.clear();
 	surface.reset();
     }
 };
 
-const char* storage_script_get_name(void)
-{
-    return "storage_script";
-}
-
-int storage_script_get_version(void)
-{
-    return 20220212;
-}
-
 void* storage_script_init(const JsonObject & config)
 {
-    VERBOSE("version: " << storage_script_get_version());
+    VERBOSE("version: " << storage_script_version);
 
     auto ptr = std::make_unique<storage_script_t>();
 
-    ptr->is_debug = config.getBoolean("debug", false);
+    ptr->debug = config.getInteger("debug", 0);
     ptr->exec = config.getString("exec");
-    ptr->image = config.getString("image");
+
+    ptr->format = config.getString("image");
+    if(ptr->format.empty())
+        ptr->format = config.getString("filename");
+
+    if(ptr->format.empty() || ptr->exec.empty())
+    {
+        if(ptr->format.empty())
+            ERROR("filename param empty");
+        if(ptr->exec.empty())
+            ERROR("exec param empty");
+        ptr->clear();
+        return nullptr;
+    }
 
     DEBUG("params: " << "exec = " << ptr->exec);
-    DEBUG("params: " << "image = " << ptr->image);
+    DEBUG("params: " << "filename = " << ptr->format);
 
     return ptr.release();
 }
@@ -79,81 +89,167 @@ void* storage_script_init(const JsonObject & config)
 void storage_script_quit(void* ptr)
 {
     storage_script_t* st = static_cast<storage_script_t*>(ptr);
-    if(st->is_debug) DEBUG("version: " << storage_script_get_version());
+    if(st->debug) DEBUG("version: " << storage_script_version);
 
     delete st;
 }
 
-int storage_script_store_action(void* ptr)
+// PluginResult::Reset, PluginResult::Failed, PluginResult::DefaultOk, PluginResult::NoAction
+int storage_script_store_action(void* ptr, const std::string & signal)
 {
     storage_script_t* st = static_cast<storage_script_t*>(ptr);
-    if(st->is_debug) DEBUG("version: " << storage_script_get_version());
+    if(! st->surface.isValid())
+    {
+        ERROR("invalid surface");
+        return PluginResult::Failed;
+    }
+
+    if(3 < st->debug) DEBUG("version: " << storage_script_version);
+
+    if(true)
+    {
+        const std::lock_guard<std::mutex> lock(st->change);
+        st->filename = String::strftime(st->format);
+
+        if(0 < st->sessionId)
+            st->filename = String::replace(st->filename, "${sid}", st->sessionId);
+    
+        if(! st->sessionName.empty())
+            st->filename = String::replace(st->filename, "${session}", st->sessionName);
+    }
 
     if(Systems::isFile(st->exec))
     {
-	if(st->surface.isValid())
-	{
-    	    DEBUG("save: " << st->image);
-    	    st->surface.save(st->image);
+        const std::lock_guard<std::mutex> lock(st->change);
 
-    	    if(! Systems::isFile(st->image))
-    	    {
-		ERROR("write image error");
-		return 1;
-    	    }
+        if(2 < st->debug)
+    	    DEBUG("save: " << st->filename);
 
-    	    std::string cmd = st->exec;
-    	    cmd.append(" ").append(st->image);
+    	st->surface.save(st->filename);
 
-    	    system(cmd.c_str());
-	    st->label = String::strftime("%Y/%m/%d %H:%M:%S");
+    	if(! Systems::isFile(st->filename))
+    	{
+	    ERROR("write image error");
+	    return PluginResult::Failed;
+    	}
 
-    	    return 0;
-	}
-	else
-	{
-    	    ERROR("invalid surface");
-	}
+    	std::string cmd = st->exec;
+    	cmd.append(" ").append(st->filename);
+    	system(cmd.c_str());
+
+    	return PluginResult::DefaultOk;
     }
     else
     {
         ERROR("exec not found: " << st->exec);
     }
 
-    return -1;
+    return PluginResult::Failed;
 }
 
-int storage_script_session_reset(void* ptr, const SessionIdName & ss)
+bool storage_script_get_value(void* ptr, int type, void* val)
 {
-    storage_script_t* st = static_cast<storage_script_t*>(ptr);
-    if(st->is_debug) DEBUG("version: " << storage_script_get_version());
+    switch(type)
+    {
+        case PluginValue::PluginName:
+            if(auto res = static_cast<std::string*>(val))
+            {
+                res->assign("storage_script");
+                return true;
+            }
+            break;
+    
+        case PluginValue::PluginVersion:
+            if(auto res = static_cast<int*>(val))
+            {
+                *res = storage_script_version;
+                return true;
+            }
+            break;
 
-    return 0;
+        case PluginValue::PluginType:
+            if(auto res = static_cast<int*>(val))
+            {
+                *res = PluginType::Storage;
+                return true;
+            }
+            break;
+
+        default:
+            break;
+    }
+
+    if(ptr)
+    {
+        storage_script_t* st = static_cast<storage_script_t*>(ptr);
+        if(4 < st->debug)
+            DEBUG("version: " << storage_script_version << ", type: " << type);
+    
+        switch(type)
+        {
+            case PluginValue::StorageLocation:
+                if(auto res = static_cast<std::string*>(val))
+                {
+                    res->assign(st->filename);
+                    return true;
+                }
+                break;
+
+            case PluginValue::StorageSurface:
+                if(auto res = static_cast<Surface*>(val))
+                {
+                    const std::lock_guard<std::mutex> lock(st->change);
+                    res->setSurface(st->surface);
+                    return true;
+                }
+                break;
+
+            default: break;
+        }
+    }
+
+    return false;
 }
 
-int storage_script_set_surface(void* ptr, const Surface & sf)
+bool storage_script_set_value(void* ptr, int type, const void* val)
 {
     storage_script_t* st = static_cast<storage_script_t*>(ptr);
-    if(st->is_debug) DEBUG("version: " << storage_script_get_version());
+    if(4 < st->debug)
+        DEBUG("version: " << storage_script_version << ", type: " << type);
 
-    st->surface = sf;
-    return 0;
-}
+    switch(type)
+    {
+        case PluginValue::StorageSurface:
+            if(auto res = static_cast<const Surface*>(val))
+            {
+                const std::lock_guard<std::mutex> lock(st->change);
+                st->surface = *res;
+                return true;
+            }
+            break;
 
-const std::string & storage_script_get_label(void* ptr)
-{
-    storage_script_t* st = static_cast<storage_script_t*>(ptr);
-    if(st->is_debug) DEBUG("version: " << storage_script_get_version());
+        case PluginValue::SessionId:
+            if(auto res = static_cast<const size_t*>(val))
+            {
+                const std::lock_guard<std::mutex> lock(st->change);
+                st->sessionId = *res;
+                return true;
+            }
+            break;
 
-    return st->label;
-}
+        case PluginValue::SessionName:
+            if(auto res = static_cast<const std::string*>(val))
+            {
+                const std::lock_guard<std::mutex> lock(st->change);
+                st->sessionName.assign(*res);
+                return true;
+            }
+            break;
 
-const Surface & storage_script_get_surface(void* ptr)
-{
-    storage_script_t* st = static_cast<storage_script_t*>(ptr);
+        default: break;
+    }
 
-    if(st->is_debug) DEBUG("version: " << storage_script_get_version());
-    return st->surface;
+    return false;
 }
 
 #ifdef __cplusplus

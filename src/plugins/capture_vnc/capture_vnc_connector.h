@@ -61,12 +61,13 @@ namespace RFB
     protected:
         void            clientPixelFormat(void);
         void            clientSetEncodings(std::initializer_list<int>);
-        void            clientFrameBufferUpdateReq(const Region &);
+        void            clientFrameBufferUpdateReq(bool incr);
+        void            clientFrameBufferUpdateReq(const Region &, bool incr);
 
-        void            serverFBUpdateEvent(void);
-        void            serverSetColorMapEvent(void);
-        void            serverBellEvent(void);
-        void            serverCutTextEvent(void);
+        virtual void    serverFBUpdateEvent(void);
+        virtual void    serverSetColorMapEvent(void);
+        virtual void    serverBellEvent(void);
+        virtual void    serverCutTextEvent(void);
 
         void            recvDecodingRaw(const Region &);
         void            recvDecodingRRE(const Region &, bool corre);
@@ -82,8 +83,8 @@ namespace RFB
         size_t          recvRunLength(void);
 
     public:
-        ClientConnector(const SWE::JsonObject*);
-        ~ClientConnector(){}
+        ClientConnector(const SWE::JsonObject &);
+        virtual ~ClientConnector(){}
 
         bool            communication(const std::string &, int, const std::string & pass = "");
         void            messages(void);

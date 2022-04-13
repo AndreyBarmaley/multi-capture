@@ -1,0 +1,9 @@
+{
+    "debug":  0,
+    "signals": [ "startRecord", "key:F1" ],
+    "#record:format": "avi",
+    "#record:fps": 25,
+    "#record:sec": 0,
+    "#record:geometry": [0, 0],
+    "filename": "/var/tmp/%Y%m%d_%H%M%S.avi"
+}

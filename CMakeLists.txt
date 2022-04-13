@@ -14,12 +14,13 @@ set(SWE_WITH_LUA OFF CACHE BOOL "disable lua" FORCE)
 set(SWE_EXAMPLES OFF CACHE BOOL "disable examples" FORCE)
 set(SWE_DISABLE_TERMGUI OFF CACHE BOOL "enable termwin_gui" FORCE)
 set(SWE_SHARED ON CACHE BOOL "enable shared" FORCE)
+set(SWE_BUILTIN_ROOTOZOOM2 OFF CACHE BOOL "built in rotozoom" FORCE)
 
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DBUILD_DEBUG")
 
 add_subdirectory(engine)
 include(engine/libswe.cmake)
-set_target_properties(libswe PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_target_properties(libswe PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/dist/plugins)
 
 set(MULTICAP_SOURCE
     src/multi_capture.cpp
@@ -35,6 +36,6 @@ include_directories(engine src)
 add_executable(MultiCapture ${MULTICAP_SOURCE})
 
 target_link_libraries(MultiCapture libswe Threads::Threads)
-set_target_properties(MultiCapture PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+set_target_properties(MultiCapture PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/dist)
 
 add_subdirectory(src/plugins)

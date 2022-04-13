@@ -1,5 +1,5 @@
 {
-    "debug":	true,
+    "debug":	0,
     "port":	5909,
     "#threads":  2,
     "noauth":  true,

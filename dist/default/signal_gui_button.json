@@ -1,0 +1,7 @@
+{
+    "debug":	0,
+    "signal:button": "pushButton123",
+    "image:press": "button1.png",
+    "image:release": "button2.png",
+    "position": [ 10, 10 ]
+}

@@ -1,5 +1,5 @@
 {
-    "debug":	true,
+    "debug":	0,
     "delay":    1000,
     "signal":	"signal_test_thread"
 }

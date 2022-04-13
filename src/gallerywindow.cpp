@@ -20,20 +20,23 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
+#include <thread>
+#include <cstdlib>
+
 #include "mainscreen.h"
 #include "gallerywindow.h"
 
-GalleryItem::GalleryItem(const Surface & sf, const std::string & label, bool hidelabel, GalleryWindow & win) : ListWidgetItem(win)
+GalleryItem::GalleryItem(const Surface & image, const std::string & location, bool hidelabel, GalleryWindow & win) : ListWidgetItem(win), label(location)
 {
     Size sz;
 
     if(win.width() < win.height())
-        sz = Size(win.width(), win.width() * sf.height() / sf.width());
+        sz = Size(win.width(), win.width() * image.height() / image.width());
     else
-        sz = Size(win.height() * sf.width() / sf.height(), win.height());
+        sz = Size(win.height() * image.width() / image.height(), win.height());
 
     thumbnail = Display::createTexture(sz - Size(2, 2));
-    Display::renderSurface(sf, sf.rect(), thumbnail, thumbnail.rect());
+    Display::renderSurface(image, image.rect(), thumbnail, thumbnail.rect());
 
     setSize(sz);
     setPosition(Point(0, 0));
@@ -41,12 +44,17 @@ GalleryItem::GalleryItem(const Surface & sf, const std::string & label, bool hid
     MainScreen* main = static_cast<MainScreen*>(win.parent());
     if(main)
     {
-	renderToolTip(label, main->fontRender(), Color::Black, Color::Wheat, Color::MidnightBlue);
+	renderToolTip(Systems::basename(label), main->fontRender(), Color::Black, Color::Wheat, Color::MidnightBlue);
 	if(! hidelabel)
             Display::renderText(main->fontRender(), Systems::basename(label), Color::Yellow, thumbnail, Point(5, thumbnail.height() - 5), AlignLeft, AlignBottom);
     }
 
     setVisible(true);
+}
+
+const std::string & GalleryItem::getLabel(void) const
+{
+    return label;
 }
 
 void GalleryItem::renderWindow(void)
@@ -63,6 +71,7 @@ GalleryWindow::GalleryWindow(const Point & pos, const Size & sz, const JsonObjec
     backcol = params.getString("background");
     hidelabel = params.getBoolean("label:hide", false);
     setState(FlagLayoutForeground);
+    action = params.getString("action:click", "xdg-open ${dir}");
     setVisible(true);
 }
 
@@ -72,9 +81,24 @@ void GalleryWindow::renderWindow(void)
     ListWidget::renderWindow();
 }
 
-void GalleryWindow::addImage(const Surface & sf, const std::string & label)
+void GalleryWindow::addImage(const Surface & image, const std::string & location)
 {
-    auto item = new GalleryItem(sf, label, hidelabel, *this);
+    auto item = new GalleryItem(image, location, hidelabel, *this);
     addItem(item);
     setActiveItem(item);
+}
+
+void GalleryWindow::itemDoubleClicked(ListWidgetItem* ptr)
+{
+    auto item = static_cast<GalleryItem*>(ptr);
+    if(item)
+    {
+        auto cmd = action;
+        cmd = String::replace(cmd, "${dir}", Systems::dirname(item->getLabel()));
+        cmd = String::replace(cmd, "${file}", item->getLabel());
+
+        std::thread([=]{
+            system(cmd.c_str());
+        }).detach();
+    }
 }

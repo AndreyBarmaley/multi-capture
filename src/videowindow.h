@@ -37,6 +37,7 @@ struct WindowParams
     std::string		labelFormat;
     Color		labelColor;
     Color		fillColor;
+    Point               labelPos;
     Rect		position;
     bool                skip;
 
@@ -52,7 +53,6 @@ class VideoWindow : public Window, protected WindowParams
     std::list< std::unique_ptr<StoragePlugin> > storagePlugins;
 
     Surface		back;
-    PluginParams*       captureParams;
 
 protected:
     void		tickEvent(u32 ms) override;
@@ -60,7 +60,11 @@ protected:
     bool		keyPressEvent(const KeySym &) override;
     bool		mousePressEvent(const ButtonEvent &) override;
 
-    void		renderSurface(void);
+    bool                actionFrameComplete(void* data);
+    bool                actionCaptureReset(void* data);
+    bool                actionStorageReset(void* data);
+    bool                actionStorageBack(void* data);
+    bool                actionSignalName(void* data);
 
 public:
     VideoWindow(const WindowParams &, Window & parent);
@@ -70,6 +74,9 @@ public:
 
     void		renderWindow(void) override;
     void		stopCapture(void);
+
+    void                actionSessionReset(const SessionIdName &);
+    void                actionSignalName(const std::string &);
 };
 
 #endif

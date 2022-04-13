@@ -29,15 +29,18 @@ class GalleryWindow;
 class GalleryItem : public ListWidgetItem
 {
     Texture	thumbnail;
+    std::string label;
 
 public:
     GalleryItem(const Surface &, const std::string &, bool, GalleryWindow &);
 
     void	renderWindow(void) override;
+    const std::string & getLabel(void) const;
 };
 
 class GalleryWindow : public ListWidget
 {
+    std::string action;
     Color	backcol;
     bool        hidelabel;
 
@@ -45,8 +48,8 @@ public:
     GalleryWindow(const Point &, const Size &, const JsonObject &, Window &);
 
     void 	renderWindow(void) override;
+    void        itemDoubleClicked(ListWidgetItem*) override;
     void 	addImage(const Surface &, const std::string &);
 };
-
 
 #endif

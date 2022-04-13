@@ -1,0 +1,40 @@
+{
+    "display:fullscreen": false,
+    "display:geometry":	[ 640, 520 ],
+    "font:file":	"terminus.ttf",
+    "font:size":	"16",
+    "font:blend":	"false",
+
+    "datetime": {
+        "strftime:format": "%H:%M:%S",
+        "position": [ 600, 10 ]
+    },
+
+    "gallery":  {
+        "position": [ 0, 480, 640, 40 ],
+        "background": "dimgray",
+        "label:hide": true
+    },
+
+    "windows": [
+	{
+		"window:skip":  false,
+		"label:name":	"input2",
+		"label:color":	"yellow",
+
+		"position":	[ 0, 0, 640, 480 ],
+		"plugins":	[ "image" ]
+        }
+    ],
+
+    "plugins": [
+	{
+	    "type": "capture_script",
+	    "name": "image",
+            "frames:sec": 3,
+
+            "exec":  "/var/tmp/random_image.sh",
+	    "debug": 1
+	}
+    ]
+}

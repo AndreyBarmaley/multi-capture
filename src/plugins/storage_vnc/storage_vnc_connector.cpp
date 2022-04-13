@@ -26,7 +26,7 @@
 #include <fstream>
 #include <algorithm>
 
-#include "../../../settings.h"
+#include "../../settings.h"
 #include "storage_vnc_connector.h"
 
 using namespace std::chrono_literals;
@@ -232,6 +232,9 @@ namespace RFB
         sendInt8(serverFormat.redShift);
         sendInt8(serverFormat.greenShift);
         sendInt8(serverFormat.blueShift);
+        // default client format
+        clientFormat = serverFormat;
+        clientRegion = fbPtr->region();
         // send padding
         sendInt8(0);
         sendInt8(0);
@@ -261,29 +264,28 @@ namespace RFB
                         if(clientSetEncodings())
                         {
                             // full update
-                            clientUpdateReq = clientFormat.bitsPerPixel != 0;
+                            clientUpdateReq = true;
                         }
                         break;
 
                     case RFB::CLIENT_REQUEST_FB_UPDATE:
-                        // full update
-                        clientFramebufferUpdate();
-                        clientUpdateReq = clientFormat.bitsPerPixel != 0;
+                        // full update only, skip incremental
+                        clientUpdateReq = clientFramebufferUpdate();
                         break;
 
                     case RFB::CLIENT_EVENT_KEY:
                         clientKeyEvent();
-                        clientUpdateReq = clientFormat.bitsPerPixel != 0;
+                        clientUpdateReq = true;
                         break;
 
                     case RFB::CLIENT_EVENT_POINTER:
                         clientPointerEvent();
-                        clientUpdateReq = clientFormat.bitsPerPixel != 0;
+                        clientUpdateReq = true;
                         break;
 
                     case RFB::CLIENT_CUT_TEXT:
                         clientCutTextEvent();
-                        clientUpdateReq = clientFormat.bitsPerPixel != 0;
+                        clientUpdateReq = true;
                         break;
 
                     default:
@@ -297,7 +299,7 @@ namespace RFB
                 fbUpdateProcessing = true;
 
                 // background job
-                std::thread([this, res = fbPtr->region()]()
+                std::thread([this, res = clientRegion]()
                 {
                     bool error = false;
                     try
@@ -671,7 +673,8 @@ namespace RFB
 
                 fbPtr.reset(ptr);
 
-                clientUpdateReq = clientFormat.bitsPerPixel != 0;
+                clientUpdateReq = true;
+                clientRegion = fbPtr->region();
             }
         }
     }

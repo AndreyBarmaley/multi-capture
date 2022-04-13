@@ -1,0 +1,53 @@
+{
+    "display:fullscreen": false,
+    "display:geometry":	[ 640, 500 ],
+    "font:file":	"terminus.ttf",
+    "font:size":	"16",
+    "font:blend":	"false",
+
+    "datetime": {
+        "strftime:format": "%H:%M:%S",
+        "position": [ 600, 10 ]
+    },
+
+    "gallery":  {
+        "position": [ 0, 480, 640, 20 ],
+        "background": "dimgray",
+        "action:click": "xdg-open ${dir}",
+        "label:hide": true
+    },
+
+    "windows":
+	[
+	    {
+		"window:skip":	false,
+		"label:name":	"endo215",
+		"label:color":	"red",
+		"position":	[0, 0, 640, 480],
+		"plugins":      [ "endo215cap", "endo2stor" ]
+	    }
+	],
+
+    "plugins": [
+	{
+	    "name": "endo215cap",
+	    "type": "capture_ffmpeg",
+
+            "debug":    false,
+            "device":   "/dev/video0",
+            "format":   "video4linux2",
+            "video4linux2:size": [640, 480],
+            "video4linux2:standard": "PAL",
+            "video4linux2:input": "s-video",
+            "scale":    true
+	},
+	{
+	    "name": "endo2stor",
+            "type": "storage_file",
+
+            "debug":  false,
+            "filename": "/var/tmp/${label}_%Y%m%d_%H%M%S.png",
+            "signals":  [ "mouse:click" ]
+        }
+    ]
+}

@@ -21,18 +21,19 @@
  ***************************************************************************/
 
 #include <array>
-#include <mutex>
 #include <atomic>
+#include <chrono>
 #include <algorithm>
 
-#include "SDL2_rotozoom.h"
 #include "../../settings.h"
-
 #include "DeckLinkAPIDispatch.cpp"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+using namespace std::chrono_literals;
+const int capture_decklink_version = PLUGIN_API;
 
 struct idname_t
 {
@@ -213,17 +214,9 @@ public:
 
 struct DeckLinkDevice : public IDeckLinkInputCallback
 {
-    std::mutex lockData;
     std::atomic<ULONG> refCount;
 
-    long imageWidth;
-    long imageHeight;
-    long imageRowBytes;
-    BMDPixelFormat imagePixelFormat;
-    BMDFrameFlags imageFlags;
-    uint8_t* imageData;
-
-    IDeckLink*  deckLink;
+    IDeckLink* deckLink;
     IDeckLinkInput* deckInput;
     IDeckLinkConfiguration* deckConfig;
     IDeckLinkProfileAttributes* deckAttrs;
@@ -232,8 +225,7 @@ struct DeckLinkDevice : public IDeckLinkInputCallback
     IDeckLinkVideoConversion* deckFrameConverter;
     std::unique_ptr<Bgra32VideoFrame> bgra32Frame;
 
-    DeckLinkDevice() : refCount(0), imageWidth(0), imageHeight(0), imageRowBytes(0),
-	imagePixelFormat(bmdFormatUnspecified), imageFlags(bmdFrameFlagDefault), imageData(nullptr),
+    DeckLinkDevice() : refCount(0), 
 	deckLink(nullptr), deckInput(nullptr), deckConfig(nullptr), deckAttrs(nullptr), deckHDMI(nullptr),
 	deckStatus(nullptr), deckFrameConverter(nullptr)
     {
@@ -447,15 +439,12 @@ struct DeckLinkDevice : public IDeckLinkInputCallback
 
     void stopCapture(void)
     {
-	const std::lock_guard<std::mutex> lock(lockData);
-
 	deckInput->StopStreams();
 	deckInput->SetCallback(nullptr);
 	deckInput->DisableVideoInput();
-	imageData = nullptr;
     }
 
-    void debugInfo(void) const
+    void deviceInfo(void) const
     {
 	char* deckLinkName = nullptr;
 	deckLink->GetDisplayName((const char**) & deckLinkName);
@@ -549,7 +538,6 @@ struct DeckLinkDevice : public IDeckLinkInputCallback
     HRESULT VideoInputFormatChanged(BMDVideoInputFormatChangedEvents notificationEvents,
 				IDeckLinkDisplayMode* newDisplayMode, BMDDetectedVideoInputFormatFlags detectedSignalFlags) override
     {
-	// !!!
         BMDPixelFormat pixelFormat = bmdFormat10BitRGB;
         
         if(detectedSignalFlags & bmdDetectedVideoInputRGB444)
@@ -617,80 +605,22 @@ struct DeckLinkDevice : public IDeckLinkInputCallback
 
 	return E_FAIL;
     }
-
-    HRESULT VideoInputFrameArrived(IDeckLinkVideoInputFrame* videoFrame, IDeckLinkAudioInputPacket* audioPacket) override
-    {
-	if(videoFrame)
-	{
-	    if(videoFrame->GetFlags() & bmdFrameHasNoInputSource)
-	    {
-		ERROR("IDeckLinkVideoInputFrame: no input source, flags: " << String::hex(videoFrame->GetFlags()));
-                return E_FAIL;
-	    }
-
-	    const std::lock_guard<std::mutex> lock(lockData);
-
-	    if(S_OK != videoFrame->GetBytes(reinterpret_cast<void**>(& imageData)))
-	    {
-		ERROR("IDeckLinkVideoInputFrame::GetBytes failed");
-		imageData = nullptr;
-                return E_FAIL;
-	    }
-
-	    imageWidth = videoFrame->GetWidth();
-	    imageHeight = videoFrame->GetHeight();
-	    imageRowBytes = videoFrame->GetRowBytes();
-	    imagePixelFormat = videoFrame->GetPixelFormat();
-	    imageFlags = videoFrame->GetFlags();
-
-    	    if(0)
-	    {
-		DEBUG("image width: " << imageWidth << ", height: " << imageHeight << ", size: " << imageRowBytes * imageHeight <<
-		    ", pixelFormat: " << String::hex(imagePixelFormat) << ", flags: " << String::hex(imageFlags));
-	    }
-
-	    if(imagePixelFormat != bmdFormat8BitBGRA)
-	    {
-    		if(! deckFrameConverter)
-		{
-		    deckFrameConverter = CreateVideoConversionInstance();
-    		    if(! deckFrameConverter)
-		    {
-			ERROR("CreateVideoConversionInstance: failed");
-            		return E_FAIL;
-    		    }
-		}
-
-		if(! bgra32Frame || bgra32Frame->GetWidth() != videoFrame->GetWidth() || bgra32Frame->GetHeight() != videoFrame->GetHeight())
-		{
-		    bgra32Frame.reset(new Bgra32VideoFrame(videoFrame->GetWidth(), videoFrame->GetHeight(), videoFrame->GetFlags()));
-		}
-
-		if(S_OK != deckFrameConverter->ConvertFrame(videoFrame, bgra32Frame.get()))
-		    ERROR("Frame conversion to BGRA was unsuccessful");
-
-		imageWidth = bgra32Frame->GetWidth();
-		imageHeight = bgra32Frame->GetHeight();
-    		imageRowBytes = bgra32Frame->GetRowBytes();
-		imagePixelFormat = bmdFormat8BitBGRA;
-		bgra32Frame->GetBytes((void**) & imageData);
-	    }
-	}
-
-	return S_OK;
-    }
 };
 
-struct capture_decklink_t
+struct capture_decklink_t : DeckLinkDevice
 {
-    bool 	is_debug;
-    bool        deinterlace;
+    int 	        debug;
+    size_t              framesPerSec;
+    size_t              duration;
 
-    DeckLinkDevice device;
-    Surface surface;
+    std::chrono::time_point<std::chrono::steady_clock> point;
 
-    capture_decklink_t() : is_debug(false), deinterlace(false)
+    std::list<Surface>  frames;
+
+    capture_decklink_t() : debug(0), framesPerSec(25), duration(0)
     {
+        duration = 1000 / framesPerSec;
+        point = std::chrono::steady_clock::now();
     }
 
     ~capture_decklink_t()
@@ -700,27 +630,124 @@ struct capture_decklink_t
 
     void clear(void)
     {
-	is_debug = false;
-        deinterlace = false;
+        stopCapture();
 
-	surface.reset();
-	device.reset();
+	debug = 0;
+        framesPerSec = 25;
+        duration = 1000 / framesPerSec;
+        frames.clear();
+    }
+
+    HRESULT VideoInputFrameArrived(IDeckLinkVideoInputFrame* videoFrame, IDeckLinkAudioInputPacket* audioPacket) override
+    {
+	if(! videoFrame)
+            return E_FAIL;
+
+	if(videoFrame->GetFlags() & bmdFrameHasNoInputSource)
+	{
+	    ERROR("IDeckLinkVideoInputFrame: no input source, flags: " << String::hex(videoFrame->GetFlags()));
+            return S_FALSE;
+	}
+
+        auto now = std::chrono::steady_clock::now();
+
+        // skip frame
+        if(5 < frames.size())
+        {
+            point = now;
+            return S_OK;
+        }
+
+        // fastest: skip frame
+        if(now - point < std::chrono::milliseconds(duration))
+        {
+            point = now;
+            return S_OK;
+        }
+
+        uint8_t* imageData = nullptr;
+        auto imageWidth = videoFrame->GetWidth();
+        auto imageHeight = videoFrame->GetHeight();
+        auto imageRowBytes = videoFrame->GetRowBytes();
+
+        // dump video frame
+    	if(4 < debug)
+	{
+	    VERBOSE("image width: " << imageWidth << ", height: " << imageHeight <<
+                    ", data size: " << imageRowBytes * imageHeight <<
+		    ", pixelFormat: " << String::hex(videoFrame->GetPixelFormat()) << ", flags: " << String::hex(videoFrame->GetFlags()));
+	}
+
+	if(videoFrame->GetPixelFormat() != bmdFormat8BitBGRA)
+	{
+    	    if(! deckFrameConverter)
+	    {
+		deckFrameConverter = CreateVideoConversionInstance();
+    		if(! deckFrameConverter)
+		{
+		    ERROR("CreateVideoConversionInstance: failed");
+                    DisplayScene::pushEvent(nullptr, ActionCaptureReset, this);
+            	    return E_FAIL;
+    		}
+	    }
+
+	    if(! bgra32Frame || bgra32Frame->GetWidth() != imageWidth || bgra32Frame->GetHeight() != imageHeight)
+	    {
+		bgra32Frame.reset(new Bgra32VideoFrame(imageWidth, imageHeight, videoFrame->GetFlags()));
+	    }
+
+	    if(S_OK != deckFrameConverter->ConvertFrame(videoFrame, bgra32Frame.get()))
+		    ERROR("Frame conversion to BGRA was unsuccessful");
+
+	    if(S_OK == bgra32Frame->GetBytes((void**) & imageData))
+	    {
+                imageWidth = bgra32Frame->GetWidth();
+                imageHeight = bgra32Frame->GetHeight();
+                imageRowBytes = bgra32Frame->GetRowBytes();
+	    }
+            else
+            {
+	        ERROR("IDeckLinkVideoInputFrame::GetBytes failed");
+	        imageData = nullptr;
+            }
+	}
+        else
+        {
+	    if(S_OK != videoFrame->GetBytes(reinterpret_cast<void**>(& imageData)))
+	    {
+	        ERROR("IDeckLinkVideoInputFrame::GetBytes failed");
+	        imageData = nullptr;
+	    }
+        }
+
+        if(! imageData)
+        {
+            DisplayScene::pushEvent(nullptr, ActionCaptureReset, this);
+            return E_FAIL;
+        }
+
+
+#ifdef SWE_SDL12
+        uint32_t rmask = Surface::defBMask(); // BGR888
+        uint32_t gmask = Surface::defGMask();
+        uint32_t bmask = Surface::defRMask();
+        uint32_t amask = 0;
+        SDL_Surface* sf = SDL_CreateRGBSurfaceFrom(imageData, imageWidth, imageHeight,
+                            32, imageRowBytes, rmask, gmask, bmask, amask);
+#else
+        SDL_Surface* sf = SDL_CreateRGBSurfaceWithFormatFrom(imageData, imageWidth, imageHeight,
+                            32, imageRowBytes, SDL_PIXELFORMAT_BGRA32);
+#endif
+        frames.push_back(Surface::copy(sf));
+        DisplayScene::pushEvent(nullptr, ActionFrameComplete, this);
+
+	return S_OK;
     }
 };
 
-const char* capture_decklink_get_name(void)
-{
-    return "capture_decklink";
-}
-
-int capture_decklink_get_version(void)
-{
-    return 20220215;
-}
-
 void* capture_decklink_init(const JsonObject & config)
 {
-    VERBOSE("version: " << capture_decklink_get_version());
+    VERBOSE("version: " << capture_decklink_version);
 
     auto ptr = std::make_unique<capture_decklink_t>();
 
@@ -728,22 +755,28 @@ void* capture_decklink_init(const JsonObject & config)
     std::string connector = config.getString("connection", "hdmi");
     auto displayMode = name2displayMode(config.getString("display:mode", "ntsc"));
     auto formatDetection = config.getBoolean("format:detection", true);
-    ptr->is_debug = config.getBoolean("debug", false);
-    ptr->deinterlace = config.getBoolean("deinterlace", false);
 
+    ptr->debug = config.getInteger("debug", 0);
+    ptr->framesPerSec = config.getInteger("frames:sec", 25);
+    if(0 == ptr->framesPerSec || ptr->framesPerSec > 1000)
+    {
+        ERROR("frames:sec param incorrect, set default");
+        ptr->framesPerSec = 25;
+    }
+
+    DEBUG("params: " << "frames:sec = " << ptr->framesPerSec);
     DEBUG("params: " << "device = " << dev_index);
     DEBUG("params: " << "connection = " << connector);
     DEBUG("params: " << "display:mode = " << displayMode2name(displayMode));
     DEBUG("params: " << "format:detection = " << String::Bool(formatDetection));
-    DEBUG("params: " << "deinterlace = " << String::Bool(ptr->deinterlace));
 
-    if(! ptr->device.init(dev_index, connector))
+    if(! ptr->init(dev_index, connector))
 	return nullptr;
 
-    ptr->device.debugInfo();
-    if(ptr->is_debug) ptr->device.dumpDisplayModes();
+    ptr->deviceInfo();
+    if(ptr->debug) ptr->dumpDisplayModes();
 
-    if(! ptr->device.startCapture(displayMode, formatDetection))
+    if(! ptr->startCapture(displayMode, formatDetection))
 	return nullptr;
 
     return ptr.release();
@@ -752,64 +785,86 @@ void* capture_decklink_init(const JsonObject & config)
 void capture_decklink_quit(void* ptr)
 {
     capture_decklink_t* st = static_cast<capture_decklink_t*>(ptr);
-    if(st->is_debug) DEBUG("version: " << capture_decklink_get_version());
+    if(st->debug) DEBUG("version: " << capture_decklink_version);
 
-    st->device.stopCapture();
     st->clear();
+
     delete st;
 }
 
-int capture_decklink_frame_action(void* ptr)
+bool capture_decklink_get_value(void* ptr, int type, void* val)
 {
-    capture_decklink_t* st = static_cast<capture_decklink_t*>(ptr);
-    if(st->is_debug) DEBUG("version: " << capture_decklink_get_version());
-
-    const std::lock_guard<std::mutex> lock(st->device.lockData);
-
-    if(! st->device.imageData)
-	return 0;
-
-    if(st->device.imagePixelFormat != bmdFormat8BitBGRA)
+    switch(type)
     {
-	ERROR("incorrect format");
-	return 0;
+        case PluginValue::PluginName:
+            if(auto res = static_cast<std::string*>(val))
+            {
+                res->assign("capture_decklink");
+                return true;
+            }
+            break;
+    
+        case PluginValue::PluginVersion:
+            if(auto res = static_cast<int*>(val))
+            {
+                *res = capture_decklink_version;
+                return true;
+            }
+            break;
+
+        case PluginValue::PluginType:
+            if(auto res = static_cast<int*>(val))
+            {
+                *res = PluginType::Capture;
+                return true;
+            }
+            break;
+
+        default:
+            break;
     }
 
-    if(st->is_debug)
+    if(ptr)
     {
-        DEBUG("image info -  width: " << st->device.imageWidth << ", height: " << st->device.imageHeight <<
-		    ", stride: " << st->device.imageRowBytes << ", size: " << st->device.imageRowBytes * st->device.imageHeight);
+        capture_decklink_t* st = static_cast<capture_decklink_t*>(ptr);
+
+        if(4 < st->debug)
+            DEBUG("version: " << capture_decklink_version << ", type: " << type);    
+
+        switch(type)
+        {
+            case PluginValue::CaptureSurface:
+                if(auto res = static_cast<Surface*>(val))
+                {
+                    if(! st->frames.empty())
+                    {
+                        res->setSurface(st->frames.front());
+                        st->frames.pop_front();
+                        return true;
+                    }
+                    return false;
+                }
+                break;
+
+            default: break;
+        }
     }
 
-#if SDL_VERSION_ATLEAST(2,0,5)
-    SDL_Surface* sf = SDL_CreateRGBSurfaceWithFormatFrom(st->device.imageData,
-                            st->device.imageWidth, st->device.imageHeight,
-                            32, st->device.imageRowBytes, SDL_PIXELFORMAT_BGRA32);
-#else
-    SDL_Surface* sf = SDL_CreateRGBSurfaceFrom(st->device.imageData,
-                            st->device.imageWidth, st->device.imageHeight,
-                            32, st->device.imageRowBytes, Bmask, Gmask, Rmask, Amask);
-#endif
-
-    if(st->deinterlace)
-    {
-        auto sf2 = zoomSurface(sf, 1.0, 0.5, 0);
-        auto sf3 = zoomSurface(sf2, 1.0, 2.0, 1);
-        std::swap(sf3, sf);
-        SDL_FreeSurface(sf2);
-        SDL_FreeSurface(sf3);
-    }
-
-    st->surface = Surface::copy(sf);
-    return 0;
+    return false;
 }
 
-const Surface & capture_decklink_get_surface(void* ptr)
+bool capture_decklink_set_value(void* ptr, int type, const void* val)
 {
     capture_decklink_t* st = static_cast<capture_decklink_t*>(ptr);
+    if(4 < st->debug)
+        DEBUG("version: " << capture_decklink_version << ", type: " << type);
+    
+    switch(type)
+    {
+        default: break;
+    }
 
-    if(st->is_debug) DEBUG("version: " << capture_decklink_get_version());
-    return st->surface;
+    return false;
 }
 
 #ifdef __cplusplus

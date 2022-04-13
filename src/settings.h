@@ -28,10 +28,12 @@
 #include "libswe.h"
 using namespace SWE;
 
-#define VERSION 20220315
-enum { ActionNone = 11110, ActionFrameComplete = 11111, ActionPluginReset = 11112,
-        ActionUnused11113 = 11113, ActionSignalBack = 11114, ActionStoreComplete = 11115,
-        ActionSessionReset = 11116, ActionProgramExit = 11119 };
+#define VERSION 20220405
+#define PLUGIN_API 20220405
+
+enum { ActionNone = 11110, ActionFrameComplete = 11111, ActionCaptureReset = 11112,
+        ActionStorageBack = 11113, ActionSignalName = 11114, ActionPushGallery = 11115,
+        ActionSessionReset = 11116, ActionStorageReset = 11117, ActionProgramExit = 11119 };
 
 #ifdef SWE_SDL12
 #include "SDL_rotozoom.h"
@@ -41,9 +43,30 @@ enum { ActionNone = 11110, ActionFrameComplete = 11111, ActionPluginReset = 1111
 
 struct SessionIdName
 {
-    size_t      id = 0;
+    size_t id = 0;
     std::string name;
 };
+
+namespace PluginType
+{
+    enum { Unknown = 0, Capture = 1, Signal = 2, Storage = 3 };
+}
+
+namespace PluginResult
+{
+    enum { Reset = -2, Failed = -1, NoAction = 0, DefaultOk = 1 };
+}
+
+namespace PluginValue
+{
+    enum { Unknown = 0, PluginName = 1, PluginVersion = 2, PluginType = 3,
+            CaptureSurface = 11,
+            SignalStopThread = 22,
+            StorageLocation = 31, StorageSurface = 32,
+            SessionId = 41, SessionName = 42, InitGui = 43 };
+
+    const char* getName(int);
+}
 
 namespace Settings
 {

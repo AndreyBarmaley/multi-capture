@@ -21,6 +21,7 @@
  ***************************************************************************/
 
 #include <list>
+#include <atomic>
 #include <memory>
 #include <cstring>
 
@@ -31,12 +32,15 @@
 extern "C" {
 #endif
 
+const int signal_dbus_signal_version = PLUGIN_API;
+
 struct signal_dbus_signal_t
 {
-    bool        is_thread;
-    bool        is_debug;
+    std::atomic<bool> is_thread;
+
+    int         debug;
     int         delay;
-    std::string signal;
+
     std::string dbus_name;
     std::string dbus_object;
     std::string dbus_interface;
@@ -44,7 +48,7 @@ struct signal_dbus_signal_t
     std::string dbus_autostart;
     DBusConnection* dbus_conn;
 
-    signal_dbus_signal_t() : is_thread(true), is_debug(false), delay(100), dbus_conn(nullptr) {}
+    signal_dbus_signal_t() : is_thread(true), debug(0), delay(100), dbus_conn(nullptr) {}
     ~signal_dbus_signal_t()
     {
 	clear();
@@ -78,7 +82,7 @@ struct signal_dbus_signal_t
     		return false;
 	    }
 
-	    if(is_debug)
+	    if(debug)
 	    {
 		VERBOSE("dbus_bus_request_name: ret code: " << ret);
 	    }
@@ -132,7 +136,7 @@ struct signal_dbus_signal_t
 	}
 
 	dbus_connection_flush(dbus_conn);
-	if(is_debug) VERBOSE("request sent");
+	if(debug) VERBOSE("request sent");
 
 	// block until we recieve a reply
 	dbus_pending_call_block(pending);
@@ -156,9 +160,8 @@ struct signal_dbus_signal_t
     void clear(void)
     {
         is_thread = true;
-        is_debug = false;
+        debug = 0;
         delay = 100;
-	signal.clear();
 	dbus_name.clear();
 	dbus_object.clear();
 	dbus_interface.clear();
@@ -167,23 +170,13 @@ struct signal_dbus_signal_t
     }
 };
 
-const char* signal_dbus_signal_get_name(void)
-{
-    return "signal_dbus_signal";
-}
-
-int signal_dbus_signal_get_version(void)
-{
-    return 20220212;
-}
-
 void* signal_dbus_signal_init(const JsonObject & config)
 {
-    VERBOSE("version: " << signal_dbus_signal_get_version());
+    VERBOSE("version: " << signal_dbus_signal_version);
 
     auto ptr = std::make_unique<signal_dbus_signal_t>();
 
-    ptr->is_debug = config.getBoolean("debug", false);
+    ptr->debug = config.getInteger("debug", 0);
     ptr->delay = config.getInteger("delay", 100);
     bool dbusIsSystem = config.getBoolean("dbus:system", false);
  
@@ -213,24 +206,15 @@ void* signal_dbus_signal_init(const JsonObject & config)
 void signal_dbus_signal_quit(void* ptr)
 {
     signal_dbus_signal_t* st = static_cast<signal_dbus_signal_t*>(ptr);
-    if(st->is_debug) DEBUG("version: " << signal_dbus_signal_get_version());
+    if(st->debug) DEBUG("version: " << signal_dbus_signal_version);
 
     delete st;
-}
-
-void signal_dbus_signal_stop_thread(void* ptr)
-{
-    signal_dbus_signal_t* st = static_cast<signal_dbus_signal_t*>(ptr);
-    if(st->is_debug) DEBUG("version: " << signal_dbus_signal_get_version());
-
-    if(st->is_thread)
-	st->is_thread = false;
 }
 
 int signal_dbus_signal_action(void* ptr)
 {
     signal_dbus_signal_t* st = static_cast<signal_dbus_signal_t*>(ptr);
-    if(st->is_debug) DEBUG("version: " << signal_dbus_signal_get_version());
+    if(3 < st->debug) DEBUG("version: " << signal_dbus_signal_version);
 
     // loop listening for signals being emmitted
     while(st->is_thread)
@@ -254,12 +238,10 @@ int signal_dbus_signal_action(void* ptr)
             // check if the message is a signal from the correct interface and with the correct name
 	    if(dbus_message_is_signal(msg.get(), st->dbus_interface.c_str(), dbus_signal.c_str()))
 	    {
-	        if(st->is_debug) DEBUG("dbus_message_is_signal: " << dbus_signal);
-
-                st->signal = dbus_signal;
+	        if(2 < st->debug) DEBUG("dbus_message_is_signal: " << dbus_signal);
 
 		// send signal to display scene
-                DisplayScene::pushEvent(nullptr, ActionSignalBack, st);
+                DisplayScene::pushEvent(nullptr, ActionSignalName, (void*) & dbus_signal);
 	    }
         }
 
@@ -267,15 +249,72 @@ int signal_dbus_signal_action(void* ptr)
 	  Tools::delay(st->delay);
     }
 
-    return 0;
+    return PluginResult::DefaultOk;
 }
 
-const std::string & signal_dbus_signal_get_signal(void* ptr)
+bool signal_dbus_signal_get_value(void* ptr, int type, void* val)
+{
+    switch(type)
+    {
+        case PluginValue::PluginName:
+            if(auto res = static_cast<std::string*>(val))
+            {
+                res->assign("signal_dbus_signal");
+                return true;
+            }
+            break;
+    
+        case PluginValue::PluginVersion:
+            if(auto res = static_cast<int*>(val))
+            {
+                *res = signal_dbus_signal_version;
+                return true;
+            }
+            break;
+
+        case PluginValue::PluginType:
+            if(auto res = static_cast<int*>(val))
+            {
+                *res = PluginType::Signal;
+                return true;
+            }
+            break;
+
+        default: break;
+    }
+
+    if(ptr)
+    {
+        signal_dbus_signal_t* st = static_cast<signal_dbus_signal_t*>(ptr);
+        if(4 < st->debug)
+            DEBUG("version: " << signal_dbus_signal_version << ", type: " << type);
+
+        switch(type)
+        {
+            default: break;
+        }
+    }
+
+    return false;
+}
+
+bool signal_dbus_signal_set_value(void* ptr, int type, const void* val)
 {
     signal_dbus_signal_t* st = static_cast<signal_dbus_signal_t*>(ptr);
-    if(st->is_debug) DEBUG("version: " << signal_dbus_signal_get_version());
+    if(4 < st->debug)
+        DEBUG("version: " << signal_dbus_signal_version << ", type: " << type);
 
-    return st->signal;
+    switch(type)
+    {
+        case PluginValue::SignalStopThread:
+            if(st->is_thread)
+                st->is_thread = false;
+            break;
+
+        default: break;
+    }
+
+    return false;
 }
 
 #ifdef __cplusplus

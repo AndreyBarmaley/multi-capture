@@ -10,4 +10,4 @@ target_link_libraries(signal_dbus_signal ${DBUS_LIBRARIES})
 target_link_libraries(signal_dbus_signal libswe)
 
 set_target_properties(signal_dbus_signal PROPERTIES PREFIX "")
-set_target_properties(signal_dbus_signal PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../../..)
+set_target_properties(signal_dbus_signal PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../../../dist/plugins)

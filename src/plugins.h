@@ -70,8 +70,8 @@ protected:
     void*		lib;
     void*	        data;
 
-    const char*		(*fun_get_name) (void);
-    int			(*fun_get_version) (void);
+    bool		(*fun_set_value) (void* ptr, int type, const void* val);
+    bool		(*fun_get_value) (void* ptr, int type, void* val);
     void*		(*fun_init) (const JsonObject &);
     void		(*fun_quit) (void*);
 
@@ -90,28 +90,26 @@ public:
     BasePlugin(const PluginParams &, Window &);
     virtual ~BasePlugin();
 
-    const char*         pluginName(void) const;
+    std::string         pluginName(void) const;
     int                 pluginVersion(void) const;
+    int                 pluginType(void) const;
 
     bool                isValid(void) const { return lib; }
     bool		isInitComplete(void) const { return threadInitialize; }
     bool		isData(void* ptr) const { return ptr && data == ptr; }
+    const PluginParams &pluginParams(void) const;
 
     void                stopThread(void);
 };
 
 class CapturePlugin : public BasePlugin
 {
-    Surface		blue;
+    Surface		surf;
 
-    TickTrigger         ttCapture;
-    int                 tickPeriod;
     bool                scaleImage;
+    bool                blueFormat;
 
 protected:
-    int			(*fun_frame_action) (void*);
-    const Surface &	(*fun_get_surface) (void*);
-
     bool                loadFunctions(void);
     Surface             generateBlueScreen(const std::string &) const;
 
@@ -119,9 +117,8 @@ public:
     CapturePlugin(const PluginParams &, Window &);
     ~CapturePlugin();
 
-    int			frameAction(void);
-    const Surface &	getSurface(void);
-    bool		isTickEvent(u32 ms) const;
+    const Surface &     getSurface(void);
+    bool                isBlue(const Surface &) const;
     bool		isScaleImage(void) const;
 };
 
@@ -131,13 +128,10 @@ class StoragePlugin : public BasePlugin
 
     TickTrigger		ttStorage;
     int                 tickPeriod;
+    std::string         threadSignal;
 
 protected:
-    int			(*fun_store_action) (void*);
-    int			(*fun_set_surface) (void*, const Surface &);
-    const Surface &	(*fun_get_surface) (void*);
-    const std::string &	(*fun_get_label) (void*);
-    int			(*fun_session_reset) (void*, const SessionIdName &);
+    int			(*fun_store_action) (void*, const std::string &);
 
     bool                loadFunctions(void);
 
@@ -145,12 +139,11 @@ public:
     StoragePlugin(const PluginParams &, Window &);
     ~StoragePlugin();
 
-    bool		signalBackAction(const std::string &, const Surface &);
-    int			storeAction(void);
-    int			setSurface(const Surface &);
+    int			storeAction(const std::string &);
+    void		setSurface(const Surface &);
     void		sessionReset(const SessionIdName &);
 
-    std::string		findSignal(const std::string &) const;
+    std::string		findSignal(const std::string &, bool strong) const;
     SurfaceLabel	getSurfaceLabel(void);
     bool		isTickEvent(u32 ms) const;
 };
@@ -159,16 +152,12 @@ class SignalPlugin : public BasePlugin
 {
 protected:
     int			(*fun_action) (void*);
-    void                (*fun_stop_thread) (void*);
-    const std::string &	(*fun_get_signal) (void*);
 
     bool                loadFunctions(void);
 
 public:
     SignalPlugin(const PluginParams &, Window &);
     ~SignalPlugin();
-
-    std::string		signalName(void) const;
 };
 
 #endif

@@ -28,14 +28,16 @@
 extern "C" {
 #endif
 
+const int signal_test_thread_version = PLUGIN_API;
+
 struct signal_test_thread_t
 {
-    bool        is_debug;
+    int         debug;
     bool        is_thread;
     int         delay;
     std::string signal;
 
-    signal_test_thread_t() : is_debug(false), is_thread(true), delay(1000) {}
+    signal_test_thread_t() : debug(0), is_thread(true), delay(1000) {}
     ~signal_test_thread_t()
     {
 	clear();
@@ -43,30 +45,20 @@ struct signal_test_thread_t
 
     void clear(void)
     {
-        is_debug = false;
+        debug = 0;
         is_thread = true;
         delay = 1000;
         signal.clear();
     }
 };
 
-const char* signal_test_thread_get_name(void)
-{
-    return "signal_test";
-}
-
-int signal_test_thread_get_version(void)
-{
-    return 20220205;
-}
-
 void* signal_test_thread_init(const JsonObject & config)
 {
-    VERBOSE("version: " << signal_test_thread_get_version());
+    VERBOSE("version: " << signal_test_thread_version);
 
     auto ptr = std::make_unique<signal_test_thread_t>();
 
-    ptr->is_debug = config.getBoolean("debug", false);
+    ptr->debug = config.getInteger("debug", 0);
     ptr->delay = config.getInteger("delay", 100);
     ptr->signal = config.getString("signal");
  
@@ -79,43 +71,91 @@ void* signal_test_thread_init(const JsonObject & config)
 void signal_test_thread_quit(void* ptr)
 {
     signal_test_thread_t* st = static_cast<signal_test_thread_t*>(ptr);
-    if(st->is_debug) DEBUG("version: " << signal_test_thread_get_version());
+    if(st->debug) DEBUG("version: " << signal_test_thread_version);
 
     delete st;
-}
-
-void signal_test_thread_stop_thread(void* ptr)
-{
-    signal_test_thread_t* st = static_cast<signal_test_thread_t*>(ptr);
-    if(st->is_debug) DEBUG("version: " << signal_test_thread_get_version());
-
-    if(st->is_thread)
-        st->is_thread = false;
 }
 
 int signal_test_thread_action(void* ptr)
 {
     signal_test_thread_t* st = static_cast<signal_test_thread_t*>(ptr);
-    if(st->is_debug) DEBUG("version: " << signal_test_thread_get_version());
+    if(3 < st->debug) DEBUG("version: " << signal_test_thread_version);
 
     // thread loop
     while(st->is_thread)
     {
 	VERBOSE("FIXME thread action");
 
-        DisplayScene::pushEvent(nullptr, ActionSignalBack, st);
+        DisplayScene::pushEvent(nullptr, ActionSignalName, (void*) & st->signal);
 	Tools::delay(st->delay);
     }
 
-    return 0;
+    return PluginResult::DefaultOk;
 }
 
-const std::string & signal_test_thread_get_signal(void* ptr)
+bool signal_test_thread_get_value(void* ptr, int type, void* val)
+{
+    switch(type)
+    {
+        case PluginValue::PluginName:
+            if(auto res = static_cast<std::string*>(val))
+            {
+                res->assign("signal_test_thread");
+                return true;
+            }
+            break;
+    
+        case PluginValue::PluginVersion:
+            if(auto res = static_cast<int*>(val))
+            {
+                *res = signal_test_thread_version;
+                return true;
+            }
+            break;
+
+        case PluginValue::PluginType:
+            if(auto res = static_cast<int*>(val))
+            {
+                *res = PluginType::Signal;
+                return true;
+            }
+            break;
+
+        default: break;
+    }       
+
+    if(ptr)
+    {
+        signal_test_thread_t* st = static_cast<signal_test_thread_t*>(ptr);
+        if(4 < st->debug)
+            DEBUG("version: " << signal_test_thread_version << ", type: " << type);
+            
+        switch(type)
+        {
+            default: break;
+        }
+    }
+
+    return false;
+}
+
+bool signal_test_thread_set_value(void* ptr, int type, const void* val)
 {
     signal_test_thread_t* st = static_cast<signal_test_thread_t*>(ptr);
-    if(st->is_debug) DEBUG("version: " << signal_test_thread_get_version());
+    if(4 < st->debug)
+        DEBUG("version: " << signal_test_thread_version << ", type: " << type);
 
-    return st->signal;
+    switch(type)
+    {
+        case PluginValue::SignalStopThread:
+            if(st->is_thread)
+                st->is_thread = false;
+            break;
+
+        default: break;
+    }
+
+    return false;
 }
 
 #ifdef __cplusplus

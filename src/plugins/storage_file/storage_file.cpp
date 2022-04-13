@@ -22,22 +22,39 @@
 
 #include <sys/stat.h>
 
+#include <mutex>
+#include <algorithm>
+
 #include "../../settings.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+#include "libavformat/avformat.h"
+#include "libswscale/swscale.h"
+
+// deinterlace.cpp
+Surface ffmpegScale(const Surface & back, const Size & sz);
+Surface ffmpegDeinterlace1(const Surface & back);
+Surface ffmpegDeinterlace2(const Surface & back);
+
+const int storage_file_version = PLUGIN_API;
+
 struct storage_file_t
 {
-    bool        is_debug;
-    bool        is_overwrite;
-    std::string label;
+    int         debug;
+    bool        overwrite;
+    int         deinterlace;
+    size_t      sessionId;
+    std::string sessionName;
     std::string format;
+    std::string filename;
     Surface	surface;
-    SessionIdName session;
+    Size        geometry;
+    std::mutex  change;
 
-    storage_file_t() : is_debug(false), is_overwrite(false) {}
+    storage_file_t() : debug(0), overwrite(false), sessionId(0) {}
     ~storage_file_t()
     {
 	clear();
@@ -45,35 +62,42 @@ struct storage_file_t
 
     void clear(void)
     {
-        is_debug = false;
-        is_overwrite = false;
-        label.clear();
+        debug = 0;
+        overwrite = false;
+        sessionId = 0;
+        sessionName.clear();
         format.clear();
+        filename.clear();
 	surface.reset();
     }
 };
 
-const char* storage_file_get_name(void)
-{
-    return "storage_file";
-}
-
-int storage_file_get_version(void)
-{
-    return 20220214;
-}
-
 void* storage_file_init(const JsonObject & config)
 {
-    VERBOSE("version: " << storage_file_get_version());
+    VERBOSE("version: " << storage_file_version);
 
     auto ptr = std::make_unique<storage_file_t>();
 
-    ptr->is_debug = config.getBoolean("debug", false);
-    ptr->is_overwrite = config.getBoolean("overwrite", false);
+    ptr->debug = config.getInteger("debug", 0);
+    ptr->overwrite = config.getBoolean("overwrite", false);
+    ptr->deinterlace = config.getInteger("deinterlace", 0);
     ptr->format = config.getString("format");
+    ptr->geometry = JsonUnpack::size(config, "size");
 
-    DEBUG("params: " << "format = " << ptr->format);
+    if(ptr->format.empty())
+        ptr->format = config.getString("filename");
+
+    if(! ptr->geometry.isEmpty())
+        DEBUG("params: " << "geometry = " << ptr->geometry.toString());
+
+    if(ptr->format.empty())
+    {
+        ERROR("filename params empty");
+        ptr->clear();
+        return nullptr;
+    }
+
+    DEBUG("params: " << "filename = " << ptr->format);
 
     return ptr.release();
 }
@@ -81,87 +105,189 @@ void* storage_file_init(const JsonObject & config)
 void storage_file_quit(void* ptr)
 {
     storage_file_t* st = static_cast<storage_file_t*>(ptr);
-    if(st->is_debug) DEBUG("version: " << storage_file_get_version());
+    if(st->debug) DEBUG("version: " << storage_file_version);
 
     delete st;
 }
 
-int storage_file_store_action(void* ptr)
+// PluginResult::Reset, PluginResult::Failed, PluginResult::DefaultOk, PluginResult::NoAction
+int storage_file_store_action(void* ptr, const std::string & signal)
 {
     storage_file_t* st = static_cast<storage_file_t*>(ptr);
-    if(st->is_debug) DEBUG("version: " << storage_file_get_version());
-
-    if(st->surface.isValid())
+    if(! st->surface.isValid())
     {
-	std::string filename = String::strftime(st->format);
-
-	if(0 < st->session.id)
-	{
-    	    filename = String::replace(filename, "${sid}", st->session.id);
-    	    filename = String::replace(filename, "${session}", st->session.name);
-	}
-
-	std::string dir = Systems::dirname(filename);
-
-	if(! Systems::isDirectory(dir))
-	{
-	    if(! Systems::makeDirectory(dir, 0775))
-	    {
-		ERROR("error mkdir: " << dir);
-		return -1;
-	    }
-	}
-
-	if(! Systems::isFile(filename) || st->is_overwrite)
-	{
-	    DEBUG("save: " << filename);
-	    st->surface.save(filename);
-	    st->label = filename;
-	}
-	else
-	{
-	    ERROR("file present: " << filename << ", overwrite skipping...");
-	}
-
-	return 0;
+        ERROR("invalid surface");
+        return PluginResult::Failed;
     }
 
-    return -1;
+    if(3 < st->debug) DEBUG("version: " << storage_file_version);
+
+    if(true)
+    {
+        const std::lock_guard<std::mutex> lock(st->change);
+        st->filename = String::strftime(st->format);
+
+        if(0 < st->sessionId)
+    	    st->filename = String::replace(st->filename, "${sid}", st->sessionId);
+
+        if(! st->sessionName.empty())
+    	    st->filename = String::replace(st->filename, "${session}", st->sessionName);
+    }
+
+    std::string dir = Systems::dirname(st->filename);
+
+    if(! Systems::isDirectory(dir))
+	Systems::makeDirectory(dir, 0775);
+
+    if(! Systems::isFile(st->filename) || st->overwrite)
+    {
+        const std::lock_guard<std::mutex> lock(st->change);
+
+        if(2 < st->debug)
+	    DEBUG("save: " << st->filename);
+
+        try
+        {
+            if(1 == st->deinterlace)
+                st->surface = ffmpegDeinterlace1(st->surface);
+            else
+            if(1 < st->deinterlace)
+                st->surface = ffmpegDeinterlace2(st->surface);
+
+            if(! st->geometry.isEmpty())
+                st->surface = ffmpegScale(st->surface, st->geometry);
+        }
+        catch(const std::exception & err)
+        {
+            ERROR(err.what());
+        }
+
+	st->surface.save(st->filename);
+
+        // backup to home
+	if(! Systems::isFile(st->filename))
+        {
+            st->filename = Systems::concatePath(Systems::environment("HOME"), Systems::basename(st->filename));
+	    ERROR("save to backup: " << st->filename);
+            st->surface.save(st->filename);
+        }
+/*
+	if(Systems::isFile(st->filename) && ! storeSignal.empty())
+            DisplayScene::pushEvent(nullptr, ActionStorageSignal, st);
+*/
+    }
+    else
+    {
+	ERROR("file present: " << st->filename << ", overwrite skipping...");
+    }
+
+    return PluginResult::DefaultOk;
 }
 
-int storage_file_session_reset(void* ptr, const SessionIdName & ss)
+bool storage_file_get_value(void* ptr, int type, void* val)
 {
-    storage_file_t* st = static_cast<storage_file_t*>(ptr);
-    if(st->is_debug) DEBUG("version: " << storage_file_get_version());
+    switch(type)
+    {
+        case PluginValue::PluginName:
+            if(auto res = static_cast<std::string*>(val))
+            {
+                res->assign("storage_file");
+                return true;
+            }
+            break;
+    
+        case PluginValue::PluginVersion:
+            if(auto res = static_cast<int*>(val))
+            {
+                *res = storage_file_version;
+                return true;
+            }
+            break;
 
-    st->session = ss;
+        case PluginValue::PluginType:
+            if(auto res = static_cast<int*>(val))
+            {
+                *res = PluginType::Storage;
+                return true;
+            }
+            break;
 
-    return 0;
+        default:
+            break;
+    }
+
+    if(ptr)
+    {
+        storage_file_t* st = static_cast<storage_file_t*>(ptr);
+        if(4 < st->debug)
+            DEBUG("version: " << storage_file_version << ", type: " << type);
+    
+        switch(type)
+        {
+            case PluginValue::StorageLocation:
+                if(auto res = static_cast<std::string*>(val))
+                {
+                    const std::lock_guard<std::mutex> lock(st->change);
+                    res->assign(st->filename);
+                    return true;
+                }
+                break;
+
+            case PluginValue::StorageSurface:
+                if(auto res = static_cast<Surface*>(val))
+                {
+                    const std::lock_guard<std::mutex> lock(st->change);
+                    *res = st->surface;
+                    return true;
+                }
+                break;
+
+            default: break;
+        }
+    }
+
+    return false;
 }
 
-int storage_file_set_surface(void* ptr, const Surface & sf)
+bool storage_file_set_value(void* ptr, int type, const void* val)
 {
     storage_file_t* st = static_cast<storage_file_t*>(ptr);
-    if(st->is_debug) DEBUG("version: " << storage_file_get_version());
+    if(4 < st->debug)
+        DEBUG("version: " << storage_file_version << ", type: " << type);
 
-    st->surface = sf;
-    return 0;
-}
+    switch(type)
+    {
+        case PluginValue::StorageSurface:
+            if(auto res = static_cast<const Surface*>(val))
+            {
+                const std::lock_guard<std::mutex> lock(st->change);
+                st->surface = *res;
+                return true;
+            }
+            break;
 
-const Surface & storage_file_get_surface(void* ptr)
-{
-    storage_file_t* st = static_cast<storage_file_t*>(ptr);
+        case PluginValue::SessionId:
+            if(auto res = static_cast<const size_t*>(val))
+            {
+                const std::lock_guard<std::mutex> lock(st->change);
+                st->sessionId = *res;
+                return true;
+            }
+            break;
 
-    if(st->is_debug) DEBUG("version: " << storage_file_get_version());
-    return st->surface;
-}
+        case PluginValue::SessionName:
+            if(auto res = static_cast<const std::string*>(val))
+            {
+                const std::lock_guard<std::mutex> lock(st->change);
+                st->sessionName.assign(*res);
+                return true;
+            }
+            break;
 
-const std::string & storage_file_get_label(void* ptr)
-{
-    storage_file_t* st = static_cast<storage_file_t*>(ptr);
-    if(st->is_debug) DEBUG("version: " << storage_file_get_version());
+        default: break;
+    }
 
-    return st->label;
+    return false;
 }
 
 #ifdef __cplusplus

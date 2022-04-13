@@ -34,6 +34,26 @@ namespace Application
     std::string getPath(void);
 }
 
+const char* PluginValue::getName(int type)
+{
+    switch(type)
+    {
+        case PluginName:        return "pluginName";
+        case PluginVersion:     return "pluginVersion";
+        case PluginType:        return "pluginType";
+        case CaptureSurface:    return "captureSurface";
+        case SignalStopThread:  return "stopThread";
+        case StorageLocation:   return "storageLocation";
+        case StorageSurface:    return "storageSurface";
+        case SessionId:         return "sessionId";
+        case SessionName:       return "sessionName";
+        case InitGui:           return "initGui";
+        default: break;
+    }
+
+    return "unknown";
+}
+
 /* PluginParams */
 PluginParams::PluginParams(const JsonObject & jo)
 {
@@ -53,24 +73,34 @@ PluginParams::PluginParams(const JsonObject & jo)
     // find type.so
     if(type.size() && file.empty())
     {
+        DEBUG("find plugin: " << type);
+
 	StringList dirs;
-	dirs << "plugins" << "libs" << Application::getPath();
+
+#ifdef MULTI_CAPTURE_PLUGINS
+	dirs << Systems::concatePath(MULTI_CAPTURE_PLUGINS);
+#endif
+	dirs << Systems::concatePath(Application::getPath(), "plugins");
 
 	for(auto & dir : Systems::shareDirectories(Settings::programDomain()))
 	    dirs << Systems::concatePath(dir, "plugins");
 
+	DEBUG("check plugin dirs: " << dirs.join(", "));
+
 	for(auto & dir : dirs)
 	{
-	    DEBUG("check plugin dirs: " << dir);
 	    std::string filename = Systems::concatePath(dir, type).append(Systems::suffixLib());
 	    if(Systems::isFile(filename))
 	    {
-		VERBOSE("plugin found: " << name << ", (" << filename << ")");
+		VERBOSE("plugin found: " << filename << ", plugin name: " << name);
 		file = filename;
 		break;
 	    }
 	}
     }
+
+    if(file.empty())
+        ERROR("plugin not found: " << name << "(" << type << ")");
 
     if(jo.isString("config"))
     {
@@ -102,8 +132,8 @@ bool PluginParams::isSignal(void) const
 
 /* BasePlugin */
 BasePlugin::BasePlugin(const PluginParams & params, Window & win) : PluginParams(params), lib(nullptr), data(nullptr),
-    fun_get_name(nullptr), fun_get_version(nullptr), fun_init(nullptr), fun_quit(nullptr),
-    threadInitialize(false), threadAction(false), threadExit(false), threadResult(0), parent(& win)
+    fun_set_value(nullptr), fun_get_value(nullptr), fun_init(nullptr), fun_quit(nullptr),
+    threadInitialize(false), threadAction(false), threadExit(false), threadResult(PluginResult::DefaultOk), parent(& win)
 {
     if(file.empty())
     {
@@ -149,9 +179,14 @@ BasePlugin::~BasePlugin()
     }
 }
 
+const PluginParams & BasePlugin::pluginParams(void) const
+{
+    return *this;
+}
+
 void BasePlugin::stopThread(void)
 {
-	threadExit = true;
+    threadExit = true;
 }
 
 void BasePlugin::joinThread(void)
@@ -191,51 +226,68 @@ bool BasePlugin::loadFunctions(void)
         return false;
     }
 
-    // fun_name
-    str = std::string(type).append("_get_name");
-    fun_get_name = (const char* (*)(void)) Systems::procAddressLib(lib, str);
-    if(! fun_get_name)
+    // fun_set_value
+    str = std::string(type).append("_set_value");
+    fun_set_value = (bool (*)(void*, int, const void*)) Systems::procAddressLib(lib, str);
+    if(! fun_set_value)
     {
         ERROR("cannot load function: " << str);
         return false;
     }
 
-    // fun_version
-    str = std::string(type).append("_get_version");
-    fun_get_version = (int (*)(void)) Systems::procAddressLib(lib, str);
-    if(! fun_get_version)
+    // fun_get_value
+    str = std::string(type).append("_get_value");
+    fun_get_value = (bool (*)(void*, int, void*)) Systems::procAddressLib(lib, str);
+    if(! fun_get_value)
     {
         ERROR("cannot load function: " << str);
+        return false;
+    }
+
+    int ver = pluginVersion();
+    if(PLUGIN_API != ver)
+    {
+        ERROR("incorrect plugin version: " << ver << ", current API: " << PLUGIN_API << ", plugin: " << pluginName());
         return false;
     }
 
     return true;
 }
 
-const char* BasePlugin::pluginName(void) const
+std::string BasePlugin::pluginName(void) const
 {
-    return fun_get_name ? fun_get_name() : nullptr;
+    std::string val;
+    fun_get_value(data, PluginValue::PluginName, & val);
+    return val;
 }
 
 int BasePlugin::pluginVersion(void) const
 {
-    return fun_get_version ? fun_get_version() : 0;
+    int val = 0;
+    fun_get_value(data, PluginValue::PluginVersion, & val);
+    return val;
+}
+
+int BasePlugin::pluginType(void) const
+{
+    int val = 0;
+    if(fun_get_value(data, PluginValue::PluginType, & val))
+        return val;
+    return PluginType::Unknown;
 }
 
 /* CapturePlugin */
-CapturePlugin::CapturePlugin(const PluginParams & params, Window & win) : BasePlugin(params, win),
-    tickPeriod(0), scaleImage(false), fun_frame_action(nullptr), fun_get_surface(nullptr)
+CapturePlugin::CapturePlugin(const PluginParams & params, Window & parent) : BasePlugin(params, parent),
+    scaleImage(false), blueFormat(true)
 {
-    blue = generateBlueScreen(_("error"));
-    tickPeriod = params.config.getInteger("tick");
-    if(tickPeriod < 0) tickPeriod = 0;
+    surf = generateBlueScreen(_("error"));
     scaleImage = params.config.getBoolean("scale");
 
     if(loadFunctions())
     {
-        blue = generateBlueScreen(_("initialize"));
+        surf = generateBlueScreen(_("initialize"));
 
-	thread = std::thread([this](){
+	thread = std::thread([this, win = & parent](){
             if(this->data)
 	    {
                 this->fun_quit(this->data);
@@ -249,6 +301,7 @@ CapturePlugin::CapturePlugin(const PluginParams & params, Window & win) : BasePl
 	    {
 	        if(nullptr != (this->data = this->fun_init(this->config)))
                 {
+                    this->fun_set_value(this->data, PluginValue::InitGui, win);
 		    this->threadInitialize = true;
                     DEBUG("thread init complete: " << this->name);
 		    break;
@@ -272,12 +325,6 @@ bool CapturePlugin::isScaleImage(void) const
     return scaleImage;
 }
 
-bool CapturePlugin::isTickEvent(u32 ms) const
-{
-    return 0 == tickPeriod ||
-        (0 < tickPeriod && ttCapture.check(ms, tickPeriod));
-}
-
 Surface CapturePlugin::generateBlueScreen(const std::string & label) const
 {
     Size winsz = JsonUnpack::size(config, "window:size");
@@ -298,90 +345,44 @@ bool CapturePlugin::loadFunctions(void)
     if(! isValid())
 	return false;
 
-    std::string str;
-
-    // fun_action
-    str = std::string(type).append("_frame_action");
-    fun_frame_action = (int (*)(void*)) Systems::procAddressLib(lib, str);
-    if(! fun_frame_action)
-    {
-        ERROR("cannot load function: " << str);
-        return false;
-    }
-
-    // fun_get_surface
-    str = std::string(type).append("_get_surface");
-    fun_get_surface = (const Surface & (*)(void*)) Systems::procAddressLib(lib, str);
-    if(! fun_get_surface)
-    {
-        ERROR("cannot load function: " << str);
-        return false;
-    }
-
     return true;
-}
-
-int CapturePlugin::frameAction(void)
-{
-    if(threadInitialize && fun_frame_action && data)
-    {
-        if(threadAction)
-        {
-            // wait action complete
-            return 0;
-        }
-        else
-        {
-            threadAction = true;
-            //DEBUG("thread action start: " << name);
-	    if(thread.joinable())
-		thread.join();
-            thread = std::thread([this](){
-                int err = this->fun_frame_action(this->data);
-                DisplayScene::pushEvent(this->parent, err ? ActionPluginReset : ActionFrameComplete, nullptr);
-                this->threadAction = false;
-                this->threadResult = err;
-            });
-            return 0;
-        }
-    }
-
-    DisplayScene::pushEvent(parent, ActionFrameComplete, nullptr);
-    return 1;
 }
 
 const Surface & CapturePlugin::getSurface(void)
 {
-    if(fun_get_surface && data)
+    if(threadInitialize && fun_get_value && data)
     {
-	if(threadInitialize)
-        {
-	    if(threadAction)
-	    {
-    	        if(thread.joinable())
-                    thread.join();
-                threadAction = false;
-	    }
+	if(threadAction)
+	{
+    	    if(thread.joinable())
+                thread.join();
+            threadAction = false;
+	}
 
-	    if(0 == threadResult)
-	        return fun_get_surface(data);
+	if(PluginResult::DefaultOk == threadResult)
+        {
+            bool res = fun_get_value(data, PluginValue::CaptureSurface, & surf);
+            if(res) blueFormat = false;
         }
     }
 
-    // return blue screen: no signal
-    return blue;
+    return surf;
+}
+
+bool CapturePlugin::isBlue(const Surface & sf) const
+{
+    return blueFormat;
 }
 
 /* StoragePlugin */
-StoragePlugin::StoragePlugin(const PluginParams & params, Window & win) : BasePlugin(params, win),
-    tickPeriod(0), fun_store_action(nullptr), fun_set_surface(nullptr), fun_get_surface(nullptr), fun_get_label(nullptr), fun_session_reset(nullptr)
+StoragePlugin::StoragePlugin(const PluginParams & params, Window & parent) : BasePlugin(params, parent),
+    tickPeriod(0), fun_store_action(nullptr)
 {
     signals = params.config.getStdList<std::string>("signals");
-    std::transform(signals.begin(), signals.end(), signals.begin(), String::toLower);
 
     if(loadFunctions())
     {
-	thread = std::thread([this](){
+	thread = std::thread([this, win = & parent](){
             if(this->data)
 	    {
                 this->fun_quit(this->data);
@@ -395,6 +396,7 @@ StoragePlugin::StoragePlugin(const PluginParams & params, Window & win) : BasePl
 	    {
 	        if(nullptr != (this->data = this->fun_init(this->config)))
                 {
+                    this->fun_set_value(this->data, PluginValue::InitGui, win);
 		    this->threadInitialize = true;
                     DEBUG("thread init complete: " << this->name);
 		    break;
@@ -407,7 +409,7 @@ StoragePlugin::StoragePlugin(const PluginParams & params, Window & win) : BasePl
         });
     }
 
-    std::string signal = findSignal("tick:");
+    std::string signal = findSignal("tick:", false);
     if(signal.size())
     {
         tickPeriod = String::toInt(signal.substr(5, signal.size() - 5));
@@ -429,44 +431,8 @@ bool StoragePlugin::loadFunctions(void)
 
     // fun_store_action
     str = std::string(type).append("_store_action");
-    fun_store_action = (int (*)(void*)) Systems::procAddressLib(lib, str);
+    fun_store_action = (int (*)(void*, const std::string &)) Systems::procAddressLib(lib, str);
     if(! fun_store_action)
-    {
-        ERROR("cannot load function: " << str);
-        return false;
-    }
-
-    // fun_set_surface
-    str = std::string(type).append("_set_surface");
-    fun_set_surface = (int (*)(void*, const Surface &)) Systems::procAddressLib(lib, str);
-    if(! fun_set_surface)
-    {
-        ERROR("cannot load function: " << str);
-        return false;
-    }
-
-    // fun_get_label
-    str = std::string(type).append("_get_label");
-    fun_get_label = (const std::string & (*)(void*)) Systems::procAddressLib(lib, str);
-    if(! fun_get_label)
-    {
-        ERROR("cannot load function: " << str);
-        return false;
-    }
-
-    // fun_get_surface
-    str = std::string(type).append("_get_surface");
-    fun_get_surface = (const Surface & (*)(void*)) Systems::procAddressLib(lib, str);
-    if(! fun_get_surface)
-    {
-        ERROR("cannot load function: " << str);
-        return false;
-    }
-
-    // fun_session_reset
-    str = std::string(type).append("_session_reset");
-    fun_session_reset = (int (*)(void*, const SessionIdName &)) Systems::procAddressLib(lib, str);
-    if(! fun_session_reset)
     {
         ERROR("cannot load function: " << str);
         return false;
@@ -483,120 +449,111 @@ bool StoragePlugin::isTickEvent(u32 ms) const
 
 void StoragePlugin::sessionReset(const SessionIdName & ss)
 {
-    if(fun_session_reset)
-	fun_session_reset(data, ss);
+    fun_set_value(data, PluginValue::SessionId, & ss.id);
+    fun_set_value(data, PluginValue::SessionName, & ss.name);
 }
 
-int StoragePlugin::storeAction(void)
+int StoragePlugin::storeAction(const std::string & signal)
 {
     if(threadInitialize && fun_store_action && data)
     {
-        if(threadAction)
+        if(threadAction && threadSignal == signal)
         {
+            // skip fast double signal
             // wait action complete
             return 0;
         }
-        else
-        {
-            threadAction = true;
-            //DEBUG("thread action start: " << name);
-	    if(thread.joinable())
-		thread.join();
-            thread = std::thread([this](){
-                int err = this->fun_store_action(this->data);
-                if(0 == err) DisplayScene::pushEvent(nullptr, ActionStoreComplete, this);
-                this->threadAction = false;
-                this->threadResult = err;
-            });
-            return 0;
-        }
+
+        threadAction = true;
+        threadSignal = signal;
+
+        //DEBUG("thread action start: " << name);
+	if(thread.joinable())
+	    thread.join();
+
+        thread = std::thread([this, sig = signal](){
+            int err = this->fun_store_action(this->data, sig);
+            if(PluginResult::DefaultOk == err)
+                DisplayScene::pushEvent(nullptr, ActionPushGallery, this);
+            else
+            if(PluginResult::Reset == err)
+                DisplayScene::pushEvent(nullptr, ActionStorageReset, this);
+
+            this->threadAction = false;
+            this->threadResult = err;
+        });
+
+        return 0;
     }
 
     return 1;
 }
 
-bool StoragePlugin::signalBackAction(const std::string & name, const Surface & back)
+void StoragePlugin::setSurface(const Surface & sf)
 {
-    std::string signal = findSignal(String::toLower(name));
-    if(signal.size())
+    if(threadInitialize && fun_set_value && data)
     {
-        setSurface(back);
-	storeAction();
-	return true;
+	if(threadAction)
+	{
+    	    if(thread.joinable())
+                thread.join();
+
+            threadAction = false;
+	}
+
+	fun_set_value(data, PluginValue::StorageSurface, & sf);
     }
-
-    return false;
-}
-
-int StoragePlugin::setSurface(const Surface & sf)
-{
-    if(fun_set_surface && data)
-    {
-	if(threadInitialize)
-        {
-	    if(threadAction)
-	    {
-    	        if(thread.joinable())
-                    thread.join();
-                threadAction = false;
-	    }
-
-	    if(0 <= threadResult)
-	        return fun_set_surface(data, sf);
-        }
-    }
-
-    return -1;
 }
 
 SurfaceLabel StoragePlugin::getSurfaceLabel(void)
 {
-    if(fun_get_surface && fun_get_label && data)
+    if(threadInitialize)
     {
-	if(threadInitialize)
-        {
-	    if(threadAction)
-	    {
-    	        if(thread.joinable())
-                    thread.join();
-                threadAction = false;
-	    }
+	if(threadAction)
+	{
+    	    if(thread.joinable())
+                thread.join();
+            threadAction = false;
+	}
 
-	    if(0 == threadResult)
-	        return SurfaceLabel(fun_get_surface(data), fun_get_label(data));
-        }
+        Surface surf;
+        std::string label;
+
+        if(fun_get_value(data, PluginValue::StorageLocation, & label) &&
+            fun_get_value(data, PluginValue::StorageSurface, & surf))
+	    return SurfaceLabel(surf, label);
     }
 
     return SurfaceLabel();
 }
 
-std::string StoragePlugin::findSignal(const std::string & str) const
+std::string StoragePlugin::findSignal(const std::string & str, bool strong) const
 {
-    for(auto it = signals.begin(); it != signals.end(); ++it)
+    if(strong)
     {
-	if((*it).size() > str.size())
-	{
-	    if(0 == (*it).compare(0, str.size(), str))
-		return *it;
-	}
-	else
-	if((*it).size() == str.size())
-	{
-	    if(0 == (*it).compare(str))
-		return *it;
-	}
+        auto it = std::find(signals.begin(), signals.end(), str);
+        if(it != signals.end())
+            return *it;
+    }
+    else
+    {
+        for(auto & sig: signals)
+        {
+	    if(0 == sig.compare(0, str.size(), str))
+	        return sig;
+        }
     }
 
     return std::string();
 }
 
 /* SignalPlugin */
-SignalPlugin::SignalPlugin(const PluginParams & params, Window & win)
-    : BasePlugin(params, win), fun_action(nullptr), fun_stop_thread(nullptr), fun_get_signal(nullptr)
+SignalPlugin::SignalPlugin(const PluginParams & params, Window & parent)
+    : BasePlugin(params, parent), fun_action(nullptr)
 {
     if(loadFunctions())
     {
-	thread = std::thread([this](){
+	thread = std::thread([this, win = &parent](){
             if(this->data)
 	    {
                 this->fun_quit(this->data);
@@ -610,6 +567,7 @@ SignalPlugin::SignalPlugin(const PluginParams & params, Window & win)
 	    {
 	        if(nullptr != (this->data = this->fun_init(this->config)))
                 {
+                    this->fun_set_value(this->data, PluginValue::InitGui, win);
 		    this->threadInitialize = true;
                     DEBUG("thread init complete: " << this->name);
 		    break;
@@ -628,18 +586,10 @@ SignalPlugin::SignalPlugin(const PluginParams & params, Window & win)
 
 SignalPlugin::~SignalPlugin()
 {
-    if(fun_stop_thread && data)
-        fun_stop_thread(data);
+    if(fun_set_value && data)
+        fun_set_value(data, PluginValue::SignalStopThread, nullptr);
 
     joinThread();
-}
-
-std::string SignalPlugin::signalName(void) const
-{
-    if(fun_get_signal && data)
-        return fun_get_signal(data);
-
-    return std::string();
 }
 
 bool SignalPlugin::loadFunctions(void)
@@ -653,24 +603,6 @@ bool SignalPlugin::loadFunctions(void)
     str = std::string(type).append("_action");
     fun_action = (int (*)(void*)) Systems::procAddressLib(lib, str);
     if(! fun_action)
-    {
-        ERROR("cannot load function: " << str);
-        return false;
-    }
-
-    // fun_stop_thread
-    str = std::string(type).append("_stop_thread");
-    fun_stop_thread = (void (*)(void*)) Systems::procAddressLib(lib, str);
-    if(! fun_stop_thread)
-    {
-        ERROR("cannot load function: " << str);
-        return false;
-    }
-
-    // fun_get_signal
-    str = std::string(type).append("_get_signal");
-    fun_get_signal = (const std::string & (*)(void*)) Systems::procAddressLib(lib, str);
-    if(! fun_get_signal)
     {
         ERROR("cannot load function: " << str);
         return false;
