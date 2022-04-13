@@ -20,31 +20,29 @@
 	    "label:name":	"input1",
 	    "label:color":	"yellow",
 
-	    "position":		[694, 10, 320, 240],
-	    "capture":		"cap_test1"
+	    "position":		[ 694, 10, 320, 240 ],
+	    "plugins":		[ "cap_test1" ]
 	},
 	{
 	    "label:name":	"input2",
 	    "label:color":	"yellow",
 
-	    "position":		[694, 260, 320, 240],
-	    "capture":		"cap_test2"
+	    "position":		[ 694, 260, 320, 240 ],
+	    "plugins":		[ "cap_test2" ]
 	},
 	{
 	    "label:name":	"input3",
 	    "label:color":	"yellow",
 
-	    "position":		[160, 10, 480, 320],
-	    "capture":		"cap_video0",
-	    "storage": 		"stor_video0"
+	    "position":		[ 160, 10, 480, 320 ],
+	    "plugins":		[ "cap_video0", "stor_video0" ]
 	},
 	{
 	    "label:name":	"input4",
 	    "label:color":	"transparent",
 
 	    "position":		[180, 340, 480, 320],
-	    "capture":		"cap_rtsp",
-	    "storage": 		"stor_rtsp"
+	    "plugins":		[ "cap_rtsp", "stor_rtsp" ]
 	}
     ],
 
@@ -53,9 +51,9 @@
 	    "name": 	"cap_test1",
 	    "type": 	"capture_image",
 
-	    "debug":    false,
+	    "debug":    0,
 	    "file":     "/var/tmp/back.png",
-	    "tick":     3000,
+	    "frames:sec": 1,
 	    "static":   false,
 	    "scale":    true
 	},
@@ -63,9 +61,8 @@
 	    "name": 	"cap_test2",
 	    "type": 	"capture_image",
 
-	    "debug":    false,
+	    "debug":    0,
 	    "file":     "/var/tmp/tmp462501.jpg",
-	    "tick":     0,
 	    "static":   true,
 	    "scale":    true
 	},
@@ -73,17 +70,16 @@
 	    "name":	"cap_video0",
 	    "type":	"capture_ffmpeg",
 
-	    "debug":    false,
+	    "debug":    0,
 	    "device":   "/dev/video0",
 	    "format":   "video4linux2",
-	    "tick":     30,
 	    "scale":    true
 	},
 	{
 	    "name":	"stor_video0",
 	    "type":	"storage_file",
 
-	    "debug":  false,
+	    "debug":    0,
 	    "format:description": "strftime",
 	    "format": "/var/tmp/input3/%Y%m%d_%H%M%S.png",
 	    "signals":	[ "mouse:click" ]
@@ -92,18 +88,17 @@
 	    "name":	"cap_rtsp",
 	    "type":	"capture_ffmpeg",
 
-	    "debug":    false,
+	    "debug":    0,
 	    "device":   "rtsp://videocam:554/live1.sdp",
 	    "format":   "rtsp",
-	    "tick":     30,
-	    "init:timeout": 500000,
+	    "init:timeout": 5000,
 	    "scale":    true
 	},
 	{
 	    "name":	"stor_strp",
 	    "type":	"storage_file",
 
-	    "debug":  true,
+	    "debug":    1,
 	    "format:description": "strftime",
 	    "format": "/var/tmp/input4/%Y%m%d_%H%M%S.png",
 	    "signals":	[ "mouse:click" ]

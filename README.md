@@ -105,8 +105,7 @@ config file
             "name": "endo203cap",
             "type": "capture_ffmpeg",
 
-            "debug":    false,
-            "tick":     50,
+            "debug":    0,
             "init:timeout":  5000,
             "device":   "http://endo203/streams/stream0-640x360-600kbps-main.ts",
             "scale":    true
@@ -115,8 +114,7 @@ config file
             "name": "endo208cap",
             "type": "capture_ffmpeg",
 
-            "debug":    false,
-            "tick":     50,
+            "debug":    0,
             "init:timeout":  5000,
             "device":   "http://endo208/streams/stream0-640x360-600kbps-main.ts",
             "scale":    true
@@ -125,8 +123,7 @@ config file
             "name": "endo209cap",
             "type": "capture_ffmpeg",
 
-            "debug":    false,
-            "tick":     50,
+            "debug":    0,
             "init:timeout":  5000,
             "device":   "http://endo209/streams/stream0-640x360-600kbps-main.ts",
             "scale":    true
@@ -135,8 +132,7 @@ config file
             "name": "endo210cap",
             "type": "capture_ffmpeg",
 
-            "debug":    false,
-            "tick":     50,
+            "debug":    0,
             "init:timeout":  5000,
             "device":   "http://endo210/streams/stream0-640x360-600kbps-main.ts",
             "scale":    true
@@ -145,8 +141,7 @@ config file
             "name": "endo211cap",
             "type": "capture_ffmpeg",
 
-            "debug":    false,
-            "tick":     50,
+            "debug":    0,
             "init:timeout":  5000,
             "device":   "http://endo211/streams/stream0-640x360-600kbps-main.ts",
             "scale":    true
@@ -155,8 +150,7 @@ config file
             "name": "endo214cap",
             "type": "capture_ffmpeg",
 
-            "debug":    false,
-            "tick":     50,
+            "debug":    0,
             "init:timeout":  5000,
             "device":   "http://endo214/streams/stream0-640x360-600kbps-main.ts",
             "scale":    true
@@ -165,8 +159,7 @@ config file
             "name": "endo215cap",
             "type": "capture_ffmpeg",
 
-            "debug":    false,
-            "tick":     50,
+            "debug":    0,
             "init:timeout":  5000,
             "device":   "http://endo215/streams/stream0-640x360-600kbps-main.ts",
             "scale":    true
@@ -175,8 +168,7 @@ config file
             "name": "endo152cap",
             "type": "capture_ffmpeg",
 
-            "debug":    false,
-            "tick":     50,
+            "debug":    0,
             "init:timeout":  5000,
             "device":   "http://endo152/streams/stream0-640x360-600kbps-main.ts",
             "scale":    true
@@ -185,8 +177,7 @@ config file
             "name": "xray152cap",
             "type": "capture_ffmpeg",
 
-            "debug":    false,
-            "tick":     50,
+            "debug":    0,
             "init:timeout":  5000,
             "device":   "http://xray152/streams/stream0-640x360-600kbps-main.ts",
             "scale":    true
@@ -195,7 +186,7 @@ config file
             "name": "label2stor",
             "type": "storage_file",
 
-            "debug":  false,
+            "debug":    0,
             "format:description": "strftime",
             "format": "/var/tmp/${label}/%Y%m%d_%H%M%S.png",
             "signals":  [ "mouse:click" ]
