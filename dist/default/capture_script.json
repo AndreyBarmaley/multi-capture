@@ -1,6 +1,7 @@
 {
     "debug":	0,
     "exec":	"/var/tmp/multi-capture-get.sh",
-    "#frames:sec": 1
+    "unlink": false,
+    "#frames:sec": 25,
     "scale":	true
 }

@@ -2,6 +2,6 @@
     "debug": 0,
     "overwrite": false,
     "#deinterlace": false,
-    "#geometry": [0, 0],
+    "#scale": [0, 0],
     "filename": "/var/tmp/%Y%m%d_%H%M%S.png"
 }

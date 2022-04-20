@@ -5,7 +5,6 @@
     "#shared":  false,
     "#password": 12345,
     "#network:debug": "netstream.dump",
-    "tick":     30,
     "scale":	true,
     "init:timeout": 5000
 }

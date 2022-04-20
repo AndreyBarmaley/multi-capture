@@ -1,6 +1,6 @@
 {
     "debug":	0,
-    "image":	"/opt/svn/my-projects/SDL/tests/engine/back.png",
+    "image":	"/var/tmp/test_back.png",
     "#frames:sec": 1,
     "static":	false,
     "lock":     "/tmp/write.lock",
