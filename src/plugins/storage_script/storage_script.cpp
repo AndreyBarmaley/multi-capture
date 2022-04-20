@@ -27,14 +27,14 @@
 extern "C" {
 #endif
 
-const int storage_script_version = PLUGIN_API;
+const int storage_script_version = 20220412;
 
 struct storage_script_t
 {
     int         debug;
     size_t      sessionId;
     std::string sessionName;
-    std::string exec;
+    std::string command;
     std::string format;
     std::string filename;
     Surface	surface;
@@ -51,7 +51,7 @@ struct storage_script_t
         debug = 0;
         sessionId = 0;
         sessionName.clear();
-        exec.clear();
+        command.clear();
         filename.clear();
 	surface.reset();
     }
@@ -64,23 +64,31 @@ void* storage_script_init(const JsonObject & config)
     auto ptr = std::make_unique<storage_script_t>();
 
     ptr->debug = config.getInteger("debug", 0);
-    ptr->exec = config.getString("exec");
+    ptr->command = config.getString("exec");
 
     ptr->format = config.getString("image");
     if(ptr->format.empty())
         ptr->format = config.getString("filename");
 
-    if(ptr->format.empty() || ptr->exec.empty())
+    if(ptr->format.empty() || ptr->command.empty())
     {
         if(ptr->format.empty())
             ERROR("filename param empty");
-        if(ptr->exec.empty())
+        if(ptr->command.empty())
             ERROR("exec param empty");
         ptr->clear();
         return nullptr;
     }
 
-    DEBUG("params: " << "exec = " << ptr->exec);
+    auto list = String::split(ptr->command, 0x20);
+    if(! Systems::isFile(list.front()))
+    {
+        ERROR("not command present: " << ptr->command);
+        ptr->clear();
+        return nullptr;
+    }
+
+    DEBUG("params: " << "exec = " << ptr->command);
     DEBUG("params: " << "filename = " << ptr->format);
 
     return ptr.release();
@@ -118,7 +126,7 @@ int storage_script_store_action(void* ptr, const std::string & signal)
             st->filename = String::replace(st->filename, "${session}", st->sessionName);
     }
 
-    if(Systems::isFile(st->exec))
+    if(Systems::isFile(st->command))
     {
         const std::lock_guard<std::mutex> lock(st->change);
 
@@ -133,7 +141,7 @@ int storage_script_store_action(void* ptr, const std::string & signal)
 	    return PluginResult::Failed;
     	}
 
-    	std::string cmd = st->exec;
+    	std::string cmd = st->command;
     	cmd.append(" ").append(st->filename);
     	system(cmd.c_str());
 
@@ -141,7 +149,7 @@ int storage_script_store_action(void* ptr, const std::string & signal)
     }
     else
     {
-        ERROR("exec not found: " << st->exec);
+        ERROR("command not found: " << st->command);
     }
 
     return PluginResult::Failed;
@@ -163,6 +171,14 @@ bool storage_script_get_value(void* ptr, int type, void* val)
             if(auto res = static_cast<int*>(val))
             {
                 *res = storage_script_version;
+                return true;
+            }
+            break;
+
+        case PluginValue::PluginAPI:
+            if(auto res = static_cast<int*>(val))
+            {
+                *res = PLUGIN_API;
                 return true;
             }
             break;
@@ -198,9 +214,12 @@ bool storage_script_get_value(void* ptr, int type, void* val)
             case PluginValue::StorageSurface:
                 if(auto res = static_cast<Surface*>(val))
                 {
-                    const std::lock_guard<std::mutex> lock(st->change);
-                    res->setSurface(st->surface);
-                    return true;
+		    if(res->isValid())
+		    {
+                	const std::lock_guard<std::mutex> lock(st->change);
+            		res->setSurface(st->surface);
+                	return true;
+		    }
                 }
                 break;
 

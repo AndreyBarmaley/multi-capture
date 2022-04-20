@@ -305,7 +305,6 @@ namespace RFB
                     try
                     {
                         this->serverSendFrameBufferUpdate(res);
-                        this->fbUpdateProcessing = false;
                     }
                     catch(const std::exception & err)
                     {
@@ -318,11 +317,11 @@ namespace RFB
                         error = true;
                     }
 
+                    this->fbUpdateProcessing = false;
+
                     if(error)
-                    {
                         this->loopMessage = false;
-                        this->fbUpdateProcessing = false;
-                    }
+
                 }).detach();
                 clientUpdateReq = false;
             }
@@ -655,27 +654,26 @@ namespace RFB
 
     void ServerConnector::setFrameBuffer(const SWE::Surface & surf)
     {
-#if (__BYTE_ORDER__==__ORDER_LITTLE_ENDIAN__)
-        bool big_endian = false;
-#else
-        bool big_endian = true;
-#endif
-
-        if(SDL_Surface* sf = surf.toSDLSurface())
+        if(surf.isValid() && (!fbPtr || fbSurf != surf))
         {
-            if(! fbPtr || fbPtr->pitchData(0) != sf->pixels)
-            {
-                const std::lock_guard<std::mutex> lock(sendGlobal);
-                auto fmt = sf->format;
+            const std::lock_guard<std::mutex> lock(sendGlobal);
+            fbSurf = surf;
 
-                auto ptr = new FrameBuffer((uint8_t*) sf->pixels, Region(0, 0, sf->w, sf->h),
-                                    PixelFormat(fmt->BitsPerPixel, 24 /* depth */, big_endian, true, fmt->Rmask, fmt->Gmask, fmt->Bmask), sf->pitch);
+#if (__BYTE_ORDER__==__ORDER_LITTLE_ENDIAN__)
+            bool bigEndian = false;
+#else
+            bool bigEndian = true;
+#endif
+            SDL_Surface* sf = fbSurf.toSDLSurface();
+            auto fmt = sf->format;
 
-                fbPtr.reset(ptr);
+            auto ptr = new FrameBuffer((uint8_t*) sf->pixels, Region(0, 0, sf->w, sf->h),
+                                    PixelFormat(fmt->BitsPerPixel, 24 /* vnc fixed depth */, bigEndian, true, fmt->Rmask, fmt->Gmask, fmt->Bmask), sf->pitch);
 
-                clientUpdateReq = true;
-                clientRegion = fbPtr->region();
-            }
+            fbPtr.reset(ptr);
+
+            clientUpdateReq = true;
+            clientRegion = fbPtr->region();
         }
     }
 }

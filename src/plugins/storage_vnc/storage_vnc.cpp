@@ -20,7 +20,6 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
-#include <mutex>
 #include <chrono>
 #include <atomic>
 #include <thread>
@@ -35,21 +34,20 @@ using namespace std::chrono_literals;
 extern "C" {
 #endif
 
-const int storage_vnc_version = PLUGIN_API;
+const int storage_vnc_version = 20220415;
 
 struct storage_vnc_t
 {
     int        debug;
     Network::TCPServer sn;
-    Surface	surface;
     int         port;
-    std::thread	thread;
-    std::mutex change;
-    std::atomic<bool> shutdown;
+    std::thread	threadVncCommunication;
+    std::atomic<bool> vncThreadShutdown;
+    bool frameBufferReceived;
     const SWE::JsonObject* config;
     std::unique_ptr<RFB::ServerConnector> vnc;
 
-    storage_vnc_t() : debug(0), port(0), shutdown(false), config(nullptr)
+    storage_vnc_t() : debug(0), port(0), vncThreadShutdown(false), frameBufferReceived(false), config(nullptr)
     {
     }
 
@@ -64,10 +62,10 @@ struct storage_vnc_t
         TCPsocket sock = nullptr;
         DEBUG("start thread");
 
-        while(! st->shutdown)
+        while(! st->vncThreadShutdown)
         {
             // wait accept
-            while(! st->shutdown)
+            while(! st->vncThreadShutdown)
             {
                 sock = st->sn.accept();
                 if(sock) break;
@@ -84,22 +82,16 @@ struct storage_vnc_t
             VERBOSE("client: connected");
             st->vnc.reset(new RFB::ServerConnector(sock, st->config));
 
-            // wait surface
-            while(! st->shutdown)
-            {
-                std::this_thread::sleep_for(150ms);
-                const std::lock_guard<std::mutex> lock(st->change);
-                if(st->surface.isValid()) break;
-            }
+            // wait set surface
+            while(! st->frameBufferReceived)
+                std::this_thread::sleep_for(100ms);
 
-            if(! st->shutdown)
+            if(! st->vncThreadShutdown)
             {
                 IPaddress* ipa = sock ? SDLNet_TCP_GetPeerAddress(sock) : nullptr;
                 std::string peer = StringFormat("%4.%3.%2.%1").
                                arg(ipa ? 0xFF & (ipa->host >> 24) : 0).arg(ipa ? 0xFF & (ipa->host >> 16) : 0).
                                arg(ipa ? 0xFF & (ipa->host >> 8) : 0).arg(ipa ? 0xFF & ipa->host : 0);
-
-                st->vnc->setFrameBuffer(st->surface);
 
                 try
                 {
@@ -115,6 +107,7 @@ struct storage_vnc_t
                 }
 
                 st->vnc.reset();
+                st->frameBufferReceived = false;
             }
 
             VERBOSE("client: disconnected");
@@ -129,7 +122,7 @@ struct storage_vnc_t
             return false;
         }
 
-        thread = std::thread([this]()
+        threadVncCommunication = std::thread([this]()
         {
             start_thread(this);
         });
@@ -138,14 +131,15 @@ struct storage_vnc_t
 
     void clear(void)
     {
-        shutdown = true;
-        if(thread.joinable()) thread.join();
+        vncThreadShutdown = true;
+        if(threadVncCommunication.joinable())
+            threadVncCommunication.join();
 
         debug = 0;
-        surface.reset();
         sn.close();
         config = nullptr;
-        shutdown = false;
+        vncThreadShutdown = false;
+        frameBufferReceived = false;
     }
 };
 
@@ -179,7 +173,7 @@ void storage_vnc_quit(void* ptr)
 
     if(st->debug) DEBUG("version: " << storage_vnc_version);
 
-    st->shutdown = true;
+    st->vncThreadShutdown = true;
     if(st->vnc) st->vnc->shutdown();
 
     delete st;
@@ -189,17 +183,7 @@ void storage_vnc_quit(void* ptr)
 int storage_vnc_store_action(void* ptr, const std::string & signal)
 {
     storage_vnc_t* st = static_cast<storage_vnc_t*>(ptr);
-    if(! st->surface.isValid())
-    {
-        ERROR("invalid surface");
-        return PluginResult::Failed;
-    }
-
     if(3 < st->debug) DEBUG("version: " << storage_vnc_version);
-
-    const std::lock_guard<std::mutex> lock(st->change);
-    if(st->vnc)
-        st->vnc->setFrameBuffer(st->surface);
 
     // always store
     return PluginResult::NoAction;
@@ -234,6 +218,14 @@ bool storage_vnc_get_value(void* ptr, int type, void* val)
             }
             break;
 
+        case PluginValue::PluginAPI:
+            if(auto res = static_cast<int*>(val))
+            {
+                *res = PLUGIN_API;
+                return true;
+            }
+            break;
+
         case PluginValue::PluginType:
             if(auto res = static_cast<int*>(val))
             {
@@ -263,13 +255,7 @@ bool storage_vnc_get_value(void* ptr, int type, void* val)
                 break;
 
             case PluginValue::StorageSurface:
-                if(auto res = static_cast<Surface*>(val))
-                {
-                    const std::lock_guard<std::mutex> lock(st->change);
-                    res->setSurface(st->surface);
-                    return true;
-                }
-                break;
+                return false;
 
             default: break;
         }
@@ -289,11 +275,15 @@ bool storage_vnc_set_value(void* ptr, int type, const void* val)
         case PluginValue::StorageSurface:
             if(auto res = static_cast<const Surface*>(val))
             {
-                const std::lock_guard<std::mutex> lock(st->change);
-                st->surface = *res;
-                // auto action
-                DisplayScene::pushEvent(nullptr, ActionStorageBack, st);
-                return true;
+		if(! res->isValid())
+		    return false;
+
+                if(st->vnc)
+		{
+                    st->vnc->setFrameBuffer(*res);
+            	    st->frameBufferReceived = true;
+            	    return true;
+		}
             }
             break;
 

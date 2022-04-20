@@ -28,7 +28,7 @@
 extern "C" {
 #endif
 
-const int signal_test_thread_version = PLUGIN_API;
+const int signal_test_thread_version = 20220412;
 
 struct signal_test_thread_t
 {
@@ -109,6 +109,14 @@ bool signal_test_thread_get_value(void* ptr, int type, void* val)
             if(auto res = static_cast<int*>(val))
             {
                 *res = signal_test_thread_version;
+                return true;
+            }
+            break;
+
+        case PluginValue::PluginAPI:
+            if(auto res = static_cast<int*>(val))
+            {
+                *res = PLUGIN_API;
                 return true;
             }
             break;

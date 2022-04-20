@@ -28,7 +28,7 @@
 extern "C" {
 #endif
 
-const int signal_gui_button_version = PLUGIN_API;
+const int signal_gui_button_version = 20220412;
 
 struct signal_gui_button_t
 {
@@ -138,11 +138,19 @@ bool signal_gui_button_get_value(void* ptr, int type, void* val)
                 return true;
             }
             break;
-    
+
         case PluginValue::PluginVersion:
             if(auto res = static_cast<int*>(val))
             {
                 *res = signal_gui_button_version;
+                return true;
+            }
+            break;
+
+        case PluginValue::PluginAPI:
+            if(auto res = static_cast<int*>(val))
+            {
+                *res = PLUGIN_API;
                 return true;
             }
             break;

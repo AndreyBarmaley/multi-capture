@@ -20,24 +20,26 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
-#include <mutex>
+#include <thread>
+#include <atomic>
 #include <chrono>
 
 #include "../../settings.h"
+#include "storage_format.h"
+
+using namespace std::literals;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-const int storage_video_version = PLUGIN_API;
+const int storage_video_version = 20220415;
 
 #include "libavdevice/avdevice.h"
 #include "libavcodec/avcodec.h"
 #include "libavformat/avformat.h"
 #include "libavformat/avio.h"
 #include "libswscale/swscale.h"
-
-using namespace std::literals;
 
 struct AVCodecContextDeleter
 {
@@ -75,46 +77,30 @@ struct AVPacketDeleter
 {
     void operator()(AVPacket* ptr)
     {
+#if LIBAVFORMAT_VERSION_MAJOR > 56
         av_packet_free(& ptr);
+#else
+        av_packet_unref(ptr);
+#endif
     }
 };
-
-AVPixelFormat av_pixelformat_from_sdl(int sdlFormat)
-{
-    AVPixelFormat avPixelFormat = AV_PIX_FMT_NONE;
-    switch(sdlFormat)
-    {
-        // tested
-        case SDL_PIXELFORMAT_RGB24: avPixelFormat = AV_PIX_FMT_RGB24; break;
-        case SDL_PIXELFORMAT_BGR24: avPixelFormat = AV_PIX_FMT_BGR24; break;
-        case SDL_PIXELFORMAT_RGB888: avPixelFormat = AV_PIX_FMT_BGR0; break;
-        case SDL_PIXELFORMAT_BGR888: avPixelFormat = AV_PIX_FMT_RGB0; break;
-        case SDL_PIXELFORMAT_ABGR8888: avPixelFormat = AV_PIX_FMT_RGBA; break;
-        case SDL_PIXELFORMAT_ARGB8888: avPixelFormat = AV_PIX_FMT_BGRA; break;
-        // untested
-        case SDL_PIXELFORMAT_RGBA8888: avPixelFormat = AV_PIX_FMT_ABGR; break;
-        case SDL_PIXELFORMAT_BGRA8888: avPixelFormat = AV_PIX_FMT_ARGB; break;
-        case SDL_PIXELFORMAT_RGBX8888: avPixelFormat = AV_PIX_FMT_0BGR; break;
-        case SDL_PIXELFORMAT_BGRX8888: avPixelFormat = AV_PIX_FMT_0RGB; break;
-        default: ERROR("unknown SDL format: " << SDL_GetPixelFormatName(sdlFormat)); break;
-    }
-    return avPixelFormat;
-}
 
 struct storage_video_t
 {
     int         debug;
-    int         duration;
-    bool        is_record;
+    int         videoLength;
+    bool        isRecordMode;
     size_t      sessionId;
+    std::atomic<bool> stopPushFrame;
     std::string sessionName;
     std::string filename;
     std::string format;
     std::string type;
-    Surface	surface;
     Size        geometry;
-    std::mutex change;
-    std::chrono::time_point<std::chrono::system_clock> point;
+
+    std::chrono::time_point<std::chrono::steady_clock> startRecordPoint;
+    std::thread pushFrameThread;
+    Frames frames;
 
     AVOutputFormat* oformat;
     AVStream* stream;
@@ -127,15 +113,15 @@ struct storage_video_t
     int fps;
     int frameCounter;
 
-    storage_video_t() : debug(0), duration(0), is_record(false), sessionId(0),
+    storage_video_t() : debug(0), videoLength(0), isRecordMode(false), sessionId(0), stopPushFrame(false),
         type("avi"), oformat(nullptr), stream(nullptr), fps(25), frameCounter(0)
     {
-        point = std::chrono::system_clock::now();
+        startRecordPoint = std::chrono::steady_clock::now();
     }
 
     ~storage_video_t()
     {
-        if(is_record) finish();
+        if(isRecordMode) finish();
 	clear();
     }
 
@@ -265,6 +251,9 @@ struct storage_video_t
 #else
         auto codecpar = stream->codec;
 #endif
+        avcctx->pix_fmt = AV_PIX_FMT_YUV420P;
+        avcctx->width = width;
+        avcctx->height = height;
 
         codecpar->width = width;
         codecpar->height = height;
@@ -276,7 +265,7 @@ struct storage_video_t
             ERROR("Failed set parameters to context: " << err);
             return false;
         }
-        
+
         err = avcodec_parameters_from_context(codecpar, avcctx.get());
         if(err < 0)
         {
@@ -329,9 +318,9 @@ struct storage_video_t
             DEBUG("time base, den: " << stream->time_base.den  << ", num: " << stream->time_base.num);
         }
 
-        point = std::chrono::system_clock::now();
+        startRecordPoint = std::chrono::steady_clock::now();
         frameCounter = 0;
-        is_record = true;
+        isRecordMode = true;
 
         if(1 < debug)
             DEBUG("start record: " << filename);
@@ -349,10 +338,14 @@ struct storage_video_t
 
         ovframe->pts = (frameCounter++) * stream->time_base.den / (stream->time_base.num * fps);
 
+#if LIBAVFORMAT_VERSION_MAJOR > 56
         std::unique_ptr<AVPacket, AVPacketDeleter> pkt(av_packet_alloc());
+#else
+	AVPacket _pkt;
+	av_init_packet(& _pkt);
+        std::unique_ptr<AVPacket, AVPacketDeleter> pkt(& _pkt);
+#endif
 
-        //pkt->data = nullptr;
-        //pkt->size = 0;
         pkt->flags |= AV_PKT_FLAG_KEY;
 
 #if LIBAVFORMAT_VERSION_MAJOR > 56
@@ -397,7 +390,13 @@ struct storage_video_t
     {
         while(true)
         {
+#if LIBAVFORMAT_VERSION_MAJOR > 56
             std::unique_ptr<AVPacket, AVPacketDeleter> pkt(av_packet_alloc());
+#else
+            AVPacket _pkt;
+            av_init_packet(& _pkt);
+            std::unique_ptr<AVPacket, AVPacketDeleter> pkt(& _pkt);
+#endif
 
 #if LIBAVFORMAT_VERSION_MAJOR > 56
             avcodec_send_frame(avcctx.get(), nullptr);
@@ -421,26 +420,30 @@ struct storage_video_t
             DEBUG("stop record: " << filename);
 
         frameCounter = 0;
-        point = std::chrono::system_clock::now();
-        is_record = false;
+        startRecordPoint = std::chrono::steady_clock::now();
+        isRecordMode = false;
     }
 
     void clear(void)
     {
-        if(is_record)
+        stopPushFrame = true;
+        if(pushFrameThread.joinable())
+            pushFrameThread.join();
+
+        if(isRecordMode)
             finish();
 
         debug = 0;
         filename.clear();
         format.clear();
-	surface.reset();
+	frames.clear();
         sessionName.clear();
 
         type = "avi";
 
         oformat = nullptr;
         stream = nullptr;
-        point = std::chrono::system_clock::now();
+        startRecordPoint = std::chrono::steady_clock::now();
 
         ovframe.reset();
         swsctx.reset();
@@ -450,7 +453,7 @@ struct storage_video_t
         fps = 25;
         sessionId = 0;
         frameCounter = 0;
-        is_record = false;
+        isRecordMode = false;
     }
 };
 
@@ -461,11 +464,15 @@ void* storage_video_init(const JsonObject & config)
     auto ptr = std::make_unique<storage_video_t>();
 
     ptr->debug = config.getInteger("debug", 0);
-    ptr->duration = config.getInteger("record:sec", 0);
+    ptr->videoLength = config.getInteger("record:sec", 0);
     ptr->fps = config.getInteger("record:fps", 25);
     ptr->type = config.getString("record:format", "avi");
     ptr->format = config.getString("filename");
     ptr->geometry = JsonUnpack::size(config, "record:geometry");
+
+    ptr->fps = config.getInteger("record:fps", 25);
+    if(ptr->fps <= 0)
+        ptr->fps = 25;
 
     if(ptr->format.empty())
     {
@@ -475,11 +482,11 @@ void* storage_video_init(const JsonObject & config)
         return nullptr;
     }
 
-    if(0 > ptr->duration)
-        ptr->duration = 0;
+    if(0 > ptr->videoLength)
+        ptr->videoLength = 0;
 
     DEBUG("params: " << "filename = " << ptr->format);
-    DEBUG("params: " << "record:sec = " << ptr->duration);
+    DEBUG("params: " << "record:sec = " << ptr->videoLength);
     DEBUG("params: " << "record:format = " << ptr->type);
     DEBUG("params: " << "record:fps = " << ptr->fps);
 
@@ -507,35 +514,57 @@ void storage_video_quit(void* ptr)
 int storage_video_store_action(void* ptr, const std::string & signal)
 {
     storage_video_t* st = static_cast<storage_video_t*>(ptr);
-    if(! st->surface.isValid())
+    if(st->frames.empty())
     {
-        ERROR("invalid surface");
+        ERROR("no frames");
         return PluginResult::Failed;
     }
 
     if(3 < st->debug) DEBUG("version: " << storage_video_version);
-    bool storageBackSignal = 0 == signal.compare("ActionStorageBack");
 
-    const std::lock_guard<std::mutex> lock(st->change);
-    const SDL_Surface* sf = st->surface.toSDLSurface();
-
-    if(! st->is_record)
+    if(! st->isRecordMode)
     {
-        if(storageBackSignal)
-            return PluginResult::Failed;
+        const SDL_Surface* sf = st->frames.front().toSDLSurface();
+        auto avPixelFormat = AV_PixelFormatEnumFromMasks(sf->format->BitsPerPixel,
+                                    sf->format->Rmask, sf->format->Gmask, sf->format->Bmask, sf->format->Amask, st->debug);
 
-        auto sdlFormat = SDL_MasksToPixelFormatEnum(sf->format->BitsPerPixel, sf->format->Rmask, sf->format->Gmask, sf->format->Bmask, sf->format->Amask);
-
-        if(2 < st->debug)
-            DEBUG("SDL format: " << SDL_GetPixelFormatName(sdlFormat));
-
-        auto avPixelFormat = av_pixelformat_from_sdl(sdlFormat);
         if(avPixelFormat == AV_PIX_FMT_NONE)
+        {
+            ERROR("unknown pixel format");
             return PluginResult::Failed;
+        }
 
         if(st->init_record(sf->w, sf->h, avPixelFormat))
         {
-            st->push(sf);
+            // push frames job
+            st->pushFrameThread = std::thread([st]{
+                auto point = std::chrono::steady_clock::now();
+                int duration = 1000 / st->fps;
+
+                while(! st->stopPushFrame)
+                {
+                    if(st->frames.empty()) break;
+
+                    auto now = std::chrono::steady_clock::now();
+
+                    // push frame
+                    if(std::chrono::milliseconds(duration) <= now - point)
+                    {
+                        auto sf = st->frames.front().toSDLSurface();
+                        st->push(sf);
+
+                        if(1 < st->frames.size())
+                            st->frames.pop_front();
+
+                        point = now;
+                    }
+
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                }
+
+                st->stopPushFrame = true;
+            });
+
             return PluginResult::DefaultOk;
         }
 
@@ -543,20 +572,19 @@ int storage_video_store_action(void* ptr, const std::string & signal)
     }
     else
     {
-        if(0 < st->duration)
+        st->stopPushFrame = true;
+        if(st->pushFrameThread.joinable())
+            st->pushFrameThread.join();
+
+        // fixed video length
+        if(0 < st->videoLength)
         {
-            auto now = std::chrono::system_clock::now();
-            if(std::chrono::seconds(st->duration) <= now - st->point)
+            auto now = std::chrono::steady_clock::now();
+            if(std::chrono::seconds(st->videoLength) <= now - st->startRecordPoint)
             {
                 st->finish();
                 return st->init2() ? PluginResult::NoAction : PluginResult::Reset;
             }
-        }
-
-        if(storageBackSignal)
-        {
-            st->push(sf);
-            return PluginResult::NoAction;
         }
 
         st->finish();
@@ -582,6 +610,14 @@ bool storage_video_get_value(void* ptr, int type, void* val)
             if(auto res = static_cast<int*>(val))
             {
                 *res = storage_video_version;
+                return true;
+            }
+            break;
+
+        case PluginValue::PluginAPI:
+            if(auto res = static_cast<int*>(val))
+            {
+                *res = PLUGIN_API;
                 return true;
             }
             break;
@@ -617,11 +653,7 @@ bool storage_video_get_value(void* ptr, int type, void* val)
             case PluginValue::StorageSurface:
                 if(auto res = static_cast<Surface*>(val))
                 {
-                    if(true)
-                    {
-                        const std::lock_guard<std::mutex> lock(st->change);
-                        *res = Surface::copy(st->surface);
-                    }
+                    *res = Surface::copy(st->frames.back());
                     int cw = res->height() / 8;
                     res->fill(Rect(res->width() - cw - cw / 2, cw / 2, cw, cw), Color::Red);
                     return true;
@@ -646,10 +678,13 @@ bool storage_video_set_value(void* ptr, int type, const void* val)
         case PluginValue::StorageSurface:
             if(auto res = static_cast<const Surface*>(val))
             {
-                const std::lock_guard<std::mutex> lock(st->change);
-                st->surface = *res;
-                // auto action
-                DisplayScene::pushEvent(nullptr, ActionStorageBack, st);
+		if(! res->isValid())
+		    return false;
+
+                if(5 < st->frames.size())
+                    return false;
+
+                st->frames.push_back(*res);
                 return true;
             }
             break;
@@ -657,7 +692,6 @@ bool storage_video_set_value(void* ptr, int type, const void* val)
         case PluginValue::SessionId:
             if(auto res = static_cast<const size_t*>(val))
             {
-                const std::lock_guard<std::mutex> lock(st->change);
                 st->sessionId = *res;
                 return true;
             }
@@ -666,7 +700,6 @@ bool storage_video_set_value(void* ptr, int type, const void* val)
         case PluginValue::SessionName:
             if(auto res = static_cast<const std::string*>(val))
             {
-                const std::lock_guard<std::mutex> lock(st->change);
                 st->sessionName.assign(*res);
                 return true;
             }

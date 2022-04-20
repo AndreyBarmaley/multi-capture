@@ -35,20 +35,21 @@ extern "C" {
 #endif
 
 using namespace std::chrono_literals;
-const int capture_script_version = PLUGIN_API;
+const int capture_script_version = 20220412;
 
 struct capture_script_t
 {
     int         debug;
+    bool        unlink;
     std::string command;
 
     size_t             framesPerSec;
     std::thread        thread;
     std::atomic<bool>  shutdown;
-    std::list<Surface> frames;
+    Frames             frames;
     std::array<char, 1024> buffer;
 
-    capture_script_t() : debug(0), framesPerSec(1), shutdown(false)
+    capture_script_t() : debug(0), unlink(false), framesPerSec(25), shutdown(false)
     {
     }
 
@@ -64,7 +65,8 @@ struct capture_script_t
             thread.join();
 
         debug = 0;
-        framesPerSec = 1;
+        unlink = false;
+        framesPerSec = 25;
 
         frames.clear();
         command.clear();
@@ -119,17 +121,11 @@ struct capture_script_t
                     std::this_thread::sleep_for(std::chrono::milliseconds(1));
                     continue;
                 }
-                else
-                if(timeMS > std::chrono::milliseconds(duration))
-                {
-                    if(st->debug)
-                        ERROR("incorrect fps:sec, calculate: " << 1000 / timeMS.count() << "fps");
-                    duration = timeMS.count();
-                }   
 
                 std::string fileImage = st->runCommand();
                 if(3 < st->debug)
                 {
+                    DEBUG("calculate fps: " << 1000 / timeMS.count() << "fps");
                     DEBUG("command result image: " << fileImage);
                 }
 
@@ -140,12 +136,13 @@ struct capture_script_t
                     if(! frame.isValid())
                     {
                         ERROR("unknown image format, file: " << fileImage);
-                        std::this_thread::sleep_for(std::chrono::milliseconds(duration));
+                        std::this_thread::sleep_for(std::chrono::milliseconds(300));
                         point = std::chrono::steady_clock::now();
                         continue;
                     }
 
                     st->frames.push_back(frame);
+                    if(st->unlink) Systems::remove(fileImage);
                     DisplayScene::pushEvent(nullptr, ActionFrameComplete, st);
                     point = now;
                 }
@@ -169,14 +166,24 @@ void* capture_script_init(const JsonObject & config)
 
     ptr->debug = config.getInteger("debug", 0);
     ptr->command = config.getString("exec");
-    ptr->framesPerSec = config.getInteger("frames:sec", 1);
+    ptr->unlink = config.getBoolean("unlink");
+
+    if(ptr->command.empty())
+    {
+        ERROR("exec param empty");
+        ptr->clear();
+        return nullptr;
+    }
+
+    ptr->framesPerSec = config.getInteger("frames:sec", 25);
     if(0 == ptr->framesPerSec || ptr->framesPerSec > 1000)
     {
         ERROR("frames:sec param incorrect, set default");
-        ptr->framesPerSec = 1;
+        ptr->framesPerSec = 15;
     }
 
-    if(! Systems::isFile(ptr->command))
+    auto list = String::split(ptr->command, 0x20);
+    if(! Systems::isFile(list.front()))
     {
         ERROR("not command present: " << ptr->command);
         ptr->clear();
@@ -215,6 +222,14 @@ bool capture_script_get_value(void* ptr, int type, void* val)
             if(auto res = static_cast<int*>(val))
             {
                 *res = capture_script_version;
+                return true;
+            }
+            break;
+
+        case PluginValue::PluginAPI:
+            if(auto res = static_cast<int*>(val))
+            {
+                *res = PLUGIN_API;
                 return true;
             }
             break;

@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.14)
 
 add_library(storage_video SHARED)
-target_sources(storage_video PUBLIC storage_video.cpp)
+target_sources(storage_video PUBLIC storage_video.cpp storage_format.cpp)
 
 pkg_search_module(FFMPEG REQUIRED libavdevice libavformat libavcodec libswscale)
 #target_compile_options(storage_video PUBLIC "-D__STDC_CONSTANT_MACROS")

@@ -31,30 +31,28 @@
 extern "C" {
 #endif
 
-#include "libavformat/avformat.h"
-#include "libswscale/swscale.h"
+#ifdef SWE_SDL12
+#include "SDL_rotozoom.h"
+#else
+#include "SDL2_rotozoom.h"
+#endif
 
-// deinterlace.cpp
-Surface ffmpegScale(const Surface & back, const Size & sz);
-Surface ffmpegDeinterlace1(const Surface & back);
-Surface ffmpegDeinterlace2(const Surface & back);
-
-const int storage_file_version = PLUGIN_API;
+const int storage_file_version = 20220412;
 
 struct storage_file_t
 {
     int         debug;
     bool        overwrite;
-    int         deinterlace;
+    bool        deinterlace;
     size_t      sessionId;
     std::string sessionName;
     std::string format;
     std::string filename;
     Surface	surface;
-    Size        geometry;
+    Size        scale;
     std::mutex  change;
 
-    storage_file_t() : debug(0), overwrite(false), sessionId(0) {}
+    storage_file_t() : debug(0), overwrite(false), deinterlace(false), sessionId(0) {}
     ~storage_file_t()
     {
 	clear();
@@ -64,6 +62,7 @@ struct storage_file_t
     {
         debug = 0;
         overwrite = false;
+        deinterlace = false;
         sessionId = 0;
         sessionName.clear();
         format.clear();
@@ -80,15 +79,15 @@ void* storage_file_init(const JsonObject & config)
 
     ptr->debug = config.getInteger("debug", 0);
     ptr->overwrite = config.getBoolean("overwrite", false);
-    ptr->deinterlace = config.getInteger("deinterlace", 0);
+    ptr->deinterlace = config.getBoolean("deinterlace", false);
     ptr->format = config.getString("format");
-    ptr->geometry = JsonUnpack::size(config, "size");
+    ptr->scale = JsonUnpack::size(config, "scale");
 
     if(ptr->format.empty())
         ptr->format = config.getString("filename");
 
-    if(! ptr->geometry.isEmpty())
-        DEBUG("params: " << "geometry = " << ptr->geometry.toString());
+    if(! ptr->scale.isEmpty())
+        DEBUG("params: " << "scale = " << ptr->scale.toString());
 
     if(ptr->format.empty())
     {
@@ -108,6 +107,26 @@ void storage_file_quit(void* ptr)
     if(st->debug) DEBUG("version: " << storage_file_version);
 
     delete st;
+}
+
+Surface storage_surface_deinterlace(const Surface & back)
+{
+    auto sf1 = back.toSDLSurface();
+    auto sf2 = zoomSurface(sf1, 1.0, 0.5, 0);
+    auto sf3 = zoomSurface(sf2, 1.0, 2.0, 1);
+    SDL_FreeSurface(sf2);
+
+    return Surface(sf3);
+}
+
+Surface storage_surface_scale(const Surface & back, const Size & nsz)
+{
+    auto sf1 = back.toSDLSurface();
+    double ratioWidth = nsz.w / static_cast<double>(sf1->w);
+    double ratioHeight = nsz.h / static_cast<double>(sf1->h);
+
+    auto sf2 = zoomSurface(sf1, ratioWidth, ratioHeight, 1 /* smooth */);
+    return Surface(sf2);
 }
 
 // PluginResult::Reset, PluginResult::Failed, PluginResult::DefaultOk, PluginResult::NoAction
@@ -146,21 +165,20 @@ int storage_file_store_action(void* ptr, const std::string & signal)
         if(2 < st->debug)
 	    DEBUG("save: " << st->filename);
 
+#ifndef SDL_SWE12
         try
         {
-            if(1 == st->deinterlace)
-                st->surface = ffmpegDeinterlace1(st->surface);
-            else
-            if(1 < st->deinterlace)
-                st->surface = ffmpegDeinterlace2(st->surface);
+            if(st->deinterlace)
+                st->surface = storage_surface_deinterlace(st->surface);
 
-            if(! st->geometry.isEmpty())
-                st->surface = ffmpegScale(st->surface, st->geometry);
+            if(! st->scale.isEmpty())
+                st->surface = storage_surface_scale(st->surface, st->scale);
         }
         catch(const std::exception & err)
         {
             ERROR(err.what());
         }
+#endif
 
 	st->surface.save(st->filename);
 
@@ -204,6 +222,14 @@ bool storage_file_get_value(void* ptr, int type, void* val)
             }
             break;
 
+        case PluginValue::PluginAPI:
+            if(auto res = static_cast<int*>(val))
+            {
+                *res = PLUGIN_API;
+                return true;
+            }
+            break;
+
         case PluginValue::PluginType:
             if(auto res = static_cast<int*>(val))
             {
@@ -236,9 +262,12 @@ bool storage_file_get_value(void* ptr, int type, void* val)
             case PluginValue::StorageSurface:
                 if(auto res = static_cast<Surface*>(val))
                 {
-                    const std::lock_guard<std::mutex> lock(st->change);
-                    *res = st->surface;
-                    return true;
+		    if(res->isValid())
+		    {
+                	const std::lock_guard<std::mutex> lock(st->change);
+                	*res = st->surface;
+                	return true;
+		    }
                 }
                 break;
 

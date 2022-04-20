@@ -25,7 +25,7 @@
 #include <atomic>
 #include <iomanip>
 #include <sstream>
-#include <cstring>
+#include <algorithm>
 
 #include "../../settings.h"
 
@@ -34,7 +34,7 @@ extern "C" {
 #endif
 
 using namespace std::chrono_literals;
-const int capture_fireware_version = PLUGIN_API;
+const int capture_fireware_version = 20220415;
 
 #include <sys/poll.h>
 
@@ -54,27 +54,17 @@ const int capture_fireware_version = PLUGIN_API;
 #define IEC61883_DV         1
 #define IEC61883_HDV        2
 
-class RGBData
-{
-public:
-    int width;
-    int height;
-    std::unique_ptr<uint8_t[]> rgb;
-
-    RGBData() : width(0), height(0) {}
-};
-
 class IEC61883Base
 {
 public:
     IEC61883Base() {}
     virtual ~IEC61883Base() {}
     virtual bool startReceive(int channel) = 0;
-    virtual const RGBData* getRGBData(void) const = 0;
 };
 
+struct capture_fireware_t;
 
-class IEC61883DV : public IEC61883Base, protected RGBData
+class IEC61883DV : public IEC61883Base
 {
     iec61883_dv_fb_t    ptr;
     std::unique_ptr<dv_decoder_t, decltype(dv_decoder_free)*> decoder;
@@ -83,10 +73,10 @@ class IEC61883DV : public IEC61883Base, protected RGBData
     int                 pitches[3];
 
 public:
-    IEC61883DV(raw1394handle_t handle, iec61883_dv_fb_recv_t func)
+    IEC61883DV(raw1394handle_t handle, iec61883_dv_fb_recv_t func, struct capture_fireware_t* st)
         : decoder{ nullptr, dv_decoder_free }, pixels{ nullptr, nullptr, nullptr }, pitches{ 0, 0, 0 }
     {
-        ptr = iec61883_dv_fb_init(handle, func, this);
+        ptr = iec61883_dv_fb_init(handle, func, st);
     	decoder.reset(dv_decoder_new(0, 0, 0));
 
 	if(decoder)
@@ -111,44 +101,22 @@ public:
         return 0 == iec61883_dv_fb_start(ptr, channel);
     }
 
-    const RGBData* getRGBData(void) const override
-    {
-        return this;
-    }
-
     dv_decoder_t* getDecoder(void)
     {
         return decoder.get();
     }
-
-    void setRGBData(int w, int h, unsigned char* data)
-    {
-	int len = w * h * 3;
-
-        if(w != width || h != height)
-        {
-            width = w;
-            height = h;
-            rgb.reset(new uint8_t[len]);
-        }
-
-	pixels[0] = rgb.get();
-    	pitches[0] = width * 3;
-
-    	dv_decode_full_frame(decoder.get(), data, e_dv_color_rgb, pixels, pitches);
-    }
 };
 
-class IEC61883MPEG2 : public IEC61883Base, protected RGBData
+class IEC61883MPEG2 : public IEC61883Base
 {
     iec61883_mpeg2_t ptr;
     std::unique_ptr<mpeg2dec_t, decltype(mpeg2_close)*> decoder;
 
 public:
-    IEC61883MPEG2(raw1394handle_t handle, iec61883_mpeg2_recv_t func)
+    IEC61883MPEG2(raw1394handle_t handle, iec61883_mpeg2_recv_t func, struct capture_fireware_t* st)
         : decoder{ nullptr, mpeg2_close }
     {
-        ptr = iec61883_mpeg2_recv_init(handle, func, this);
+        ptr = iec61883_mpeg2_recv_init(handle, func, st);
 	decoder.reset(mpeg2_init());
 
 	if(! decoder)
@@ -169,28 +137,9 @@ public:
     	return 0 == iec61883_mpeg2_recv_start(ptr, channel);
     }
 
-    const RGBData* getRGBData(void) const override
-    {
-        return this;
-    }
-
     mpeg2dec_t* getDecoder(void)
     {
         return decoder.get();
-    }
-
-    void setRGBData(int w, int h, uint8_t* data)
-    {
-	int len = w * h * 3;
-
-        if(w != width || h != height)
-        {
-            width = w;
-            height = h;
-            rgb.reset(new uint8_t[len]);
-        }
-
-	std::memcpy(rgb.get(), data, len);
     }
 };
 
@@ -199,32 +148,31 @@ struct capture_fireware_t
     int 	debug;
 
     std::unique_ptr<raw1394_handle, decltype(raw1394_destroy_handle)*> raw1394;
-    struct pollfd	raw1394_poll;
+    std::unique_ptr<IEC61883Base> iec61883;
 
-    std::unique_ptr<IEC61883Base> iec61883_ptr;
+    uint64_t		devGuid;
+    int			devNode;
+    int			devPort;
+    int			devInput;
+    int			devOutput;
+    int			devChannel;
+    int			devBandwidth;
 
-    uint64_t		guid;
-    int			node;
-    int			port;
-    int			type;
-    int			input;
-    int			output;
-    int			channel;
-    int			bandwidth;
-    int			receiving;
+    std::thread         thread;
 
     size_t              framesPerSec;
-    std::thread         thread;
     std::atomic<bool>   shutdown;
-            
-    std::list<Surface>  frames;
 
-    capture_fireware_t() : debug(0),
-	raw1394{ nullptr, raw1394_destroy_handle },
-	guid(0), node(-1), port(-1), type(0), input(-1), output(-1), channel(-1), bandwidth(0), receiving(0),
+    size_t              duration;
+    std::chrono::time_point<std::chrono::steady_clock> point;
+    Frames              frames;
+
+    capture_fireware_t() : debug(0), raw1394{ nullptr, raw1394_destroy_handle },
+	devGuid(0), devNode(-1), devPort(-1), devInput(-1), devOutput(-1), devChannel(-1), devBandwidth(0),
         framesPerSec(25), shutdown(false)
     {
-        raw1394_poll = {0};
+        duration = 1000 / framesPerSec;
+        point = std::chrono::steady_clock::now();
     }
 
     ~capture_fireware_t()
@@ -243,7 +191,7 @@ struct capture_fireware_t
 	}
 
 	struct raw1394_portinfo pinf[16];
-	rom1394_directory rom_dir;
+	rom1394_directory romDir;
 
 	int nb_ports = raw1394_get_port_info(raw1394.get(), pinf, 16);
 	if(0 > nb_ports)
@@ -252,44 +200,44 @@ struct capture_fireware_t
     	    return false;
 	}
 
-	for(int pi = 0; pi < nb_ports; ++pi)
+	for(int portIter = 0; portIter < nb_ports; ++portIter)
 	{
-	    raw1394.reset(raw1394_new_handle_on_port(pi));
+	    raw1394.reset(raw1394_new_handle_on_port(portIter));
 
     	    if(! raw1394)
 	    {
-        	ERROR("Failed setting IEEE1394 port: " << pi);
+        	ERROR("Failed setting IEEE1394 port: " << portIter);
         	return false;
     	    }
 
-    	    for(int ni = 0; ni < raw1394_get_nodecount(raw1394.get()); ++ni)
+    	    for(int nodeIter = 0; nodeIter < raw1394_get_nodecount(raw1394.get()); ++nodeIter)
 	    {
         	/* Select device explicitly by GUID */
-        	if(guid > 1)
+        	if(devGuid > 1)
 		{
-            	    if(guid == rom1394_get_guid(raw1394.get(), ni))
-		    {
-                	node = ni;
-                	port = pi;
-			return true;
-            	    }
+            	    if(devGuid != rom1394_get_guid(raw1394.get(), nodeIter))
+			continue;
+
+            	    devNode = nodeIter;
+            	    devPort = portIter;
+		    return true;
         	}
 		else
         	/* Select first AV/C tape recorder player node */
-        	if(0 <= rom1394_get_directory(raw1394.get(), ni, & rom_dir))
+        	if(0 <= rom1394_get_directory(raw1394.get(), nodeIter, & romDir))
 		{
-            	    if((ROM1394_NODE_TYPE_AVC == rom1394_get_node_type(& rom_dir) &&
-                        avc1394_check_subunit_type(raw1394.get(), ni, AVC1394_SUBUNIT_TYPE_VCR)) ||
-                	rom_dir.unit_spec_id == MOTDCT_SPEC_ID)
+            	    if((ROM1394_NODE_TYPE_AVC == rom1394_get_node_type(& romDir) &&
+                        avc1394_check_subunit_type(raw1394.get(), nodeIter, AVC1394_SUBUNIT_TYPE_VCR)) ||
+                	romDir.unit_spec_id == MOTDCT_SPEC_ID)
 		    {
-                	node = ni;
-                	port = pi;
-			uint64_t guid = rom1394_get_guid(raw1394.get(), ni);
+                	devNode = nodeIter;
+                	devPort = portIter;
+			devGuid = rom1394_get_guid(raw1394.get(), nodeIter);
 
-			VERBOSE("selected guid: " << String::hex64(guid));
+			VERBOSE("selected guid: " << String::hex64(devGuid));
             	    }
 
-            	    rom1394_free_directory(& rom_dir);
+            	    rom1394_free_directory(& romDir);
 		    if(raw1394) return true;
         	}
     	    }
@@ -300,39 +248,99 @@ struct capture_fireware_t
 
     static int mpeg2_callback(unsigned char* data, int length, unsigned int complete, void* ptr)
     {
-	IEC61883MPEG2* mpeg2 = static_cast<IEC61883MPEG2*>(ptr);
-        mpeg2dec_t* decoder = mpeg2->getDecoder();
+        capture_fireware_t* st = static_cast<capture_fireware_t*>(ptr);
+	IEC61883MPEG2* mpeg2 = st ? static_cast<IEC61883MPEG2*>(st->iec61883.get()) : nullptr;
+        mpeg2dec_t* decoder = mpeg2 ? mpeg2->getDecoder() : nullptr;
 
 	if(data && 0 < length && decoder)
 	{
-	    DEBUG("packet length: " << length);
+            auto now = std::chrono::steady_clock::now();
 
 	    const mpeg2_info_t* info = mpeg2_info(decoder);
+            if(! info)
+            {
+                ERROR("mpeg_info failed");
+                return -1;
+            }
+
 	    mpeg2_state_t state = mpeg2_parse(decoder);
+	    bool setrgb = false;
 
 	    switch(state)
 	    {
 		case STATE_BUFFER:
+		{
 		    mpeg2_buffer(decoder, data, data + length);
-        	    break;
+		    if(3 < st->debug) 
+			DEBUG("state buffer, length: " << length);
+        	}
+		break;
 
 		case STATE_SEQUENCE:
 		{
 		    int res = mpeg2_convert(decoder, mpeg2convert_rgb24, nullptr);
-		    DEBUG("mpeg2_convert result: " << res);
+		    if(3 < st->debug) 
+			DEBUG("state sequence, length: " << length << ", mpeg2_convert result: " << res);
 		}
 		break;
 
 		case STATE_SLICE:
+		    if(3 < st->debug) 
+			DEBUG("state slice, length: " << length);
+		    setrgb = true;
+        	    break;
+
 		case STATE_END:
+		    if(3 < st->debug) 
+			DEBUG("state end, length: " << length);
+		    setrgb = true;
+        	    break;
+
 		case STATE_INVALID_END:
-    		    if(info->display_fbuf)
-			mpeg2->setRGBData(info->sequence->width, info->sequence->height, info->display_fbuf->buf[0]);
+		    if(3 < st->debug) 
+			DEBUG("state invalid end, length: " << length);
+		    setrgb = true;
         	    break;
 
     		default:
         	    break;
     	    }
+
+            // skip frame
+            if(5 < st->frames.size())
+            {
+                st->point = now;
+                return 0;
+            }
+
+            // fastest: skip frame
+            if(now - st->point < std::chrono::milliseconds(st->duration))
+            {
+                st->point = now;
+                return 0;
+            }
+
+    	    if(setrgb && info->sequence && info->display_fbuf)
+            {
+                if(4 < st->debug)
+                {
+                    VERBOSE("image width: " << info->sequence->width << ", height: " << info->sequence->height <<
+                        ", data size: " << info->sequence->width * 3 << ", pixelFormat: " << "RGB24");
+                }
+
+                // SDL_PIXELFORMAT_RGB24
+                uint32_t rmask = 0x00FF0000; uint32_t gmask = 0x0000FF00; uint32_t bmask = 0x000000FF;
+#if (__BYTE_ORDER__==__ORDER_LITTLE_ENDIAN__)
+                std::swap(rmask, bmask);
+#endif
+ 
+    	        SDL_Surface* sf = SDL_CreateRGBSurfaceFrom(info->display_fbuf->buf[0], info->sequence->width, info->sequence->height,
+				24, info->sequence->width * 3, rmask, gmask, bmask, 0);
+
+                st->frames.push_back(Surface::copy(sf));
+                DisplayScene::pushEvent(nullptr, ActionFrameComplete, st);
+                st->point = now;
+            }
 	}
 
 	return 0;
@@ -340,19 +348,68 @@ struct capture_fireware_t
 
     static int dv_callback(unsigned char* data, int length, int complete, void* ptr)
     {
-	IEC61883DV* dv = static_cast<IEC61883DV*>(ptr);
-        dv_decoder_t* decoder = dv->getDecoder();
+        capture_fireware_t* st = static_cast<capture_fireware_t*>(ptr);
+	IEC61883DV* dv = st ? static_cast<IEC61883DV*>(st->iec61883.get()) : nullptr;
+        dv_decoder_t* decoder = dv ? dv->getDecoder() : nullptr;
 
 	if(data && 0 < length && decoder)
 	{
+            auto now = std::chrono::steady_clock::now();
+
     	    int res = dv_parse_header(decoder, data);
+            if(res < 0)
+            {
+                ERROR("dv_parse_header failed, error: " << res);
+                return -1;
+            }
+
     	    dv_parse_packs(decoder, data);
 
-	    DEBUG("packet length: " << length << ", complete: " << complete <<
-		    ", frame size: " << decoder->width << "x" << decoder->height << ", dv_parse_header: " << res);
+            // skip frame
+            if(5 < st->frames.size())
+            {
+                st->point = now;
+                return 0;
+            }
 
-	    if(0 < length)
-		dv->setRGBData(decoder->width, decoder->height, data);
+            // fastest: skip frame
+            if(now - st->point < std::chrono::milliseconds(st->duration))
+            {
+                st->point = now;
+                return 0;
+            }
+
+	    if(complete)
+            {
+
+                uint8_t* pixels[3] = {nullptr};
+                int pitches[3] = {0};
+                std::vector<uint8_t> buf(decoder->width * decoder->height * 3);
+
+                pixels[0] = buf.data();
+    	        pitches[0] = decoder->width * 3;
+
+    	        dv_decode_full_frame(decoder, data, e_dv_color_rgb, pixels, pitches);
+
+                // dump video frame
+                if(4 < st->debug)
+                {
+                    VERBOSE("image width: " << decoder->width << ", height: " << decoder->height <<
+                        ", data size: " << decoder->width * 3 << ", pixelFormat: " << "RGB24");
+                }
+
+                // SDL_PIXELFORMAT_RGB24
+                uint32_t rmask = 0x00FF0000; uint32_t gmask = 0x0000FF00; uint32_t bmask = 0x000000FF;
+#if (__BYTE_ORDER__==__ORDER_LITTLE_ENDIAN__)
+                std::swap(rmask, bmask);
+#endif
+    	        SDL_Surface* sf = SDL_CreateRGBSurfaceFrom(pixels[0], decoder->width, decoder->height,
+				24, decoder->width * 3, rmask, gmask, bmask, 0);
+
+                st->frames.push_back(Surface::copy(sf));
+                DisplayScene::pushEvent(nullptr, ActionFrameComplete, st);
+                st->point = now;
+            }
 	}
 
 	return 0;
@@ -367,39 +424,40 @@ struct capture_fireware_t
 	}
 
 	// Provide bus sanity for multiple connections
-	iec61883_cmp_normalize_output(raw1394.get(), 0xffc0 | node);
+	iec61883_cmp_normalize_output(raw1394.get(), 0xffc0 | devNode);
 
 	// Find out if device is DV or HDV
-	int response = avc1394_transaction(raw1394.get(), node,
+	int response = avc1394_transaction(raw1394.get(), devNode,
                                        AVC1394_CTYPE_STATUS |
                                        AVC1394_SUBUNIT_TYPE_TAPE_RECORDER |
                                        AVC1394_SUBUNIT_ID_0 |
                                        AVC1394_VCR_COMMAND_OUTPUT_SIGNAL_MODE | 0xFF, 2);
 
 	response = AVC1394_GET_OPERAND0(response);
-	type = (response == 0x10 || response == 0x90 || response == 0x1A || response == 0x9A) ?
+	int type = (response == 0x10 || response == 0x90 || response == 0x1A || response == 0x9A) ?
 		IEC61883_HDV : IEC61883_DV;
 
 	// Connect to device, and do initialization
-        channel = iec61883_cmp_connect(raw1394.get(), node, & output,
-                                       raw1394_get_local_id(raw1394.get()), & input, & bandwidth);
-	if(channel < 0)
-    	    channel = 63;
+        devChannel = iec61883_cmp_connect(raw1394.get(), devNode, & devOutput,
+                                       raw1394_get_local_id(raw1394.get()), & devInput, & devBandwidth);
+	if(devChannel < 0)
+    	    devChannel = 63;
 
 	if(type == IEC61883_HDV)
 	{
-    	    iec61883_ptr.reset(new IEC61883MPEG2(raw1394.get(), mpeg2_callback));
+    	    iec61883.reset(new IEC61883MPEG2(raw1394.get(), mpeg2_callback, this));
+	    if(debug)
+                DEBUG("started mpeg2 mode");
 	}
 	else
 	{
-    	    iec61883_ptr.reset(new IEC61883DV(raw1394.get(), dv_callback));
+    	    iec61883.reset(new IEC61883DV(raw1394.get(), dv_callback, this));
+	    if(debug)
+                DEBUG("started DV mode");
 	}
 
-	raw1394_poll.fd = raw1394_get_fd(raw1394.get());
-	raw1394_poll.events = POLLIN | POLLERR | POLLHUP | POLLPRI;
-
 	// actually start receiving
-        if(! iec61883_ptr->startReceive(channel))
+        if(! iec61883->startReceive(devChannel))
             return false;
 
     	return true;
@@ -412,133 +470,83 @@ struct capture_fireware_t
             thread.join();
 
         framesPerSec = 25;
-        frames.clear();
 
 	if(raw1394)
 	{
-    	    iec61883_ptr.reset();
-	    iec61883_cmp_disconnect(raw1394.get(), node, output,
-                            raw1394_get_local_id(raw1394.get()), input, channel, bandwidth);
+    	    iec61883.reset();
+	    iec61883_cmp_disconnect(raw1394.get(), devNode, devOutput,
+                            raw1394_get_local_id(raw1394.get()), devInput, devChannel, devBandwidth);
 
 	    raw1394.reset();
-    	    raw1394_poll = {0};
 	}
 
 	debug = 0;
-	guid = 0;
-	node = -1;
-	port = -1;
-	type = 0;
-	input = -1;
-	output = -1;
-	channel = -1;
-	bandwidth = 0;
-	receiving = 0;
-    }
-
-    int frameToSurface(Surface & result)
-    {
-        int ret = 0;
-
-        while((ret = poll(& raw1394_poll, 1, 200)) < 0)
-        {
-            if(! (errno == EAGAIN || errno == EINTR))
-	    {
-    	        ERROR("raw1394 poll error occurred");
-    	        return PluginResult::Reset;
-            }
-        }
-
-        if(ret > 0 && ((raw1394_poll.revents & POLLIN) || (raw1394_poll.revents & POLLPRI)))
-        {
-	    receiving = 1;
-            raw1394_loop_iterate(raw1394.get());
-        
-            if(auto info = iec61883_ptr->getRGBData())
-	    {
-                // dump video frame
-                if(4 < debug)
-                {
-                    VERBOSE("image width: " << info->width << ", height: " << info->height <<
-                        ", data size: " << info->width * 3 * info->height << ", pixelFormat: " << "RGB24");
-                }
-
-#ifdef SWE_SDL12
-    	        SDL_Surface* sf = SDL_CreateRGBSurfaceFrom(info->rgb.get(), info->width, info->height,
-				24, info->width * 3, Surface::defRMask(), Surface::defGMask(), Surface::defBMask(), 0);
-#else
-    	        SDL_Surface* sf = SDL_CreateRGBSurfaceWithFormatFrom(info->rgb.get(), info->width, info->height,
-				24, info->width * 3, SDL_PIXELFORMAT_RGB24);
-#endif
-                result = Surface::copy(sf);
-	    }
-
-	    return PluginResult::DefaultOk;
-        }
-        else
-        if(receiving)
-        {
-            ERROR("no more input data available");
-        }
-
-        return PluginResult::Failed;
+	devGuid = 0;
+	devNode = -1;
+	devPort = -1;
+	devInput = -1;
+	devOutput = -1;
+	devChannel = -1;
+	devBandwidth = 0;
     }
 
     void start(void)
     {
         shutdown = false;
+
+	//raw1394_busreset_notify(st->raw1394.get(), 1);
+
         // frames loop
         thread = std::thread([st = this]
         {
-            Surface frame;
-            size_t delay = 10;
-            size_t duration = 1000 / st->framesPerSec;
-            auto point = std::chrono::steady_clock::now();
-    
+
             while(! st->shutdown)
             {
-                if(5 < st->frames.size())
-                {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(duration));
-                    point = std::chrono::steady_clock::now();
-                    continue;
-                }
-        
-                int res = st->frameToSurface(frame);
+                int ret = 0;
+		struct pollfd rawPoll{0};
+		rawPoll.fd = raw1394_get_fd(st->raw1394.get());
+		rawPoll.events = POLLIN | POLLERR | POLLNVAL | POLLHUP | POLLPRI;
 
-                if(PluginResult::DefaultOk == res)
-                {
-                    auto now = std::chrono::steady_clock::now();
-                    auto timeMS = std::chrono::duration_cast<std::chrono::milliseconds>(now - point);
+                ret = poll(& rawPoll, 1, 10);
 
-                    if(4 < st->debug)
-                    {
-                        DEBUG("real frame time: " << timeMS.count() << "ms");
-                    }
+                if(0 > ret)
+	        {
+		    if(errno == EAGAIN || errno == EINTR)
+			continue;
 
-                    if(timeMS > std::chrono::milliseconds(duration))
-                    {
-                        delay--;
-                    }
-                    else
-                    if(timeMS < std::chrono::milliseconds(duration))
-                    {
-                        delay++;
-                    }
-                    
-                    st->frames.push_back(frame);
-                    DisplayScene::pushEvent(nullptr, ActionFrameComplete, st);
-                    point = now;
-                }
-                else
-                if(PluginResult::Reset == res)
-                {
+    	            ERROR("raw1394 poll error occurred");
                     DisplayScene::pushEvent(nullptr, ActionCaptureReset, st);
                     st->shutdown = true;
+                    break;
                 }
+                else
+		if(0 == ret)
+		{
+                    // if no dv_callback more 3 sec
+                    auto now = std::chrono::steady_clock::now();
+		    auto timeMS = std::chrono::duration_cast<std::chrono::milliseconds>(now - st->point);
 
-                if(delay)
-                    std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+                    if(timeMS.count() > 3000)
+		    {
+			ERROR("raw1394 timeout exception");
+            	        DisplayScene::pushEvent(nullptr, ActionCaptureReset, st);
+            		st->point = now;
+                	st->shutdown = true;
+                	break;
+		    }
+		}
+
+                if(0 < ret && ((rawPoll.revents & POLLIN) || (rawPoll.revents & POLLPRI)))
+                {
+                    ret = raw1394_loop_iterate(st->raw1394.get());
+                    if(ret != 0)
+                    {
+                        ERROR("raw1394_loop_iterate failed, error: " << ret);
+                        DisplayScene::pushEvent(nullptr, ActionCaptureReset, st);
+                        st->shutdown = true;
+                        break;
+                    }
+                }
             }
         });
     }
@@ -558,37 +566,29 @@ void* capture_fireware_init(const JsonObject & config)
         ptr->framesPerSec = 25;
     }
 
-    std::string strguid = config.getString("guid");
+    std::string strGuid = config.getString("guid");
 
     DEBUG("params: " << "frames:sec = " << ptr->framesPerSec);
 
-    if(strguid.size() && strguid != "auto")
+    if(strGuid.size() && strGuid != "auto")
     {
-	std::istringstream ss(strguid);
-	ss >> std::hex >> ptr->guid;
+	std::istringstream ss(strGuid);
+	ss >> std::hex >> ptr->devGuid;
 
 	if(ss.fail())
 	{
-            ERROR("invalid dv guid parameter: " << strguid);
-	    ptr->guid = 0;
+            ERROR("invalid dv guid parameter: " << strGuid);
+	    ptr->devGuid = 0;
         }
 	else
 	{
-	    DEBUG("params: " << "guid = " << strguid);
+	    DEBUG("params: " << "guid = " << strGuid);
 	}
     }
 
     if(! ptr->init())
 	return nullptr;
 
-    if(ptr->type == IEC61883_HDV)
-    {
-	VERBOSE("started mpeg2 mode");
-    }
-    else
-    {
-	VERBOSE("started DV mode");
-    }
 
     ptr->start();
 
@@ -619,6 +619,14 @@ bool capture_fireware_get_value(void* ptr, int type, void* val)
             if(auto res = static_cast<int*>(val))
             {
                 *res = capture_fireware_version;
+                return true;
+            }
+            break;
+
+        case PluginValue::PluginAPI:
+            if(auto res = static_cast<int*>(val))
+            {
+                *res = PLUGIN_API;
                 return true;
             }
             break;

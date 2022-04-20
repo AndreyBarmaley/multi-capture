@@ -23,13 +23,14 @@
 #ifndef _CNA_SETTINGS_
 #define _CNA_SETTINGS_
 
+#include <mutex>
 #include <string>
 
 #include "libswe.h"
 using namespace SWE;
 
-#define VERSION 20220405
-#define PLUGIN_API 20220405
+#define VERSION 20220412
+#define PLUGIN_API 20220406
 
 enum { ActionNone = 11110, ActionFrameComplete = 11111, ActionCaptureReset = 11112,
         ActionStorageBack = 11113, ActionSignalName = 11114, ActionPushGallery = 11115,
@@ -59,7 +60,7 @@ namespace PluginResult
 
 namespace PluginValue
 {
-    enum { Unknown = 0, PluginName = 1, PluginVersion = 2, PluginType = 3,
+    enum { Unknown = 0, PluginName = 1, PluginVersion = 2, PluginType = 3, PluginAPI = 4,
             CaptureSurface = 11,
             SignalStopThread = 22,
             StorageLocation = 31, StorageSurface = 32,
@@ -79,5 +80,53 @@ namespace Settings
     std::string		dataJson(const std::string &);
     std::string		dataPath(void);
 }
+
+struct Frames : protected std::list<Surface>
+{
+    mutable std::mutex mt;
+
+    Frames()
+    {
+    }
+
+    bool empty(void) const
+    {
+        return std::list<Surface>::empty();
+    }
+    
+    size_t size(void) const
+    {
+        const std::lock_guard<std::mutex> lock(mt);
+        return std::list<Surface>::size();
+    }
+    
+    void clear(void)
+    {
+        const std::lock_guard<std::mutex> lock(mt);
+        std::list<Surface>::clear();
+    }
+    
+    void push_back(const Surface & sf)
+    {
+        const std::lock_guard<std::mutex> lock(mt);
+        std::list<Surface>::push_back(sf);
+    }
+
+    void pop_front(void)
+    {
+        const std::lock_guard<std::mutex> lock(mt);
+        std::list<Surface>::pop_front();
+    }
+
+    Surface front(void) const
+    {
+        return std::list<Surface>::front();
+    }
+
+    Surface back(void) const
+    {
+        return std::list<Surface>::back();
+    }
+};
 
 #endif

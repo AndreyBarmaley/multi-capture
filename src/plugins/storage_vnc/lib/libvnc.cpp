@@ -586,35 +586,39 @@ namespace RFB
             {
                 case 32:
                     if(auto ptr = static_cast<uint32_t*>(offset))
-                        while(length--) *ptr++ = pixel;
+                        std::fill(ptr, ptr + length, pixel);
                     break;
 
                 case 24:
                     if(auto ptr = static_cast<uint8_t*>(offset))
                     {
+#if (__BYTE_ORDER__==__ORDER_LITTLE_ENDIAN__)
+                        uint8_t v1 = pixel;
+                        uint8_t v2 = pixel >> 8;
+                        uint8_t v3 = pixel >> 16;
+#else
+                        uint8_t v1 = pixel >> 16;
+                        uint8_t v2 = pixel >> 8;
+                        uint8_t v3 = pixel;
+#endif
+
                         while(length--)
                         {
-#if (__BYTE_ORDER__==__ORDER_LITTLE_ENDIAN__)
-                            *ptr++ = static_cast<uint8_t>(0xFF & pixel);
-                            *ptr++ = static_cast<uint8_t>(0xFF & (pixel >> 8));
-                            *ptr++ = static_cast<uint8_t>(0xFF & (pixel >> 16));
-#else
-                            *ptr++ = static_cast<uint8_t>(0xFF & (pixel >> 16));
-                            *ptr++ = static_cast<uint8_t>(0xFF & (pixel >> 8));
-                            *ptr++ = static_cast<uint8_t>(0xFF & pixel);
-#endif
+                            *ptr++ = v1;
+                            *ptr++ = v2;
+                            *ptr++ = v3;
                         }
                     }
                     break;
 
                 case 16:
                     if(auto ptr = static_cast<uint16_t*>(offset))
-                        while(length--) *ptr++ = static_cast<uint16_t>(pixel);
+                        std::fill(ptr, ptr + length, static_cast<uint16_t>(pixel));
                     break;
 
                 case 8:
                     if(auto ptr = static_cast<uint8_t*>(offset))
-                        while(length--) *ptr++ = static_cast<uint8_t>(pixel);
+                        std::fill(ptr, ptr + length, static_cast<uint8_t>(pixel));
                     break;
 
                 default:
@@ -629,37 +633,49 @@ namespace RFB
         setPixelRow(pos, raw, 1);
     }
 
-    void FrameBuffer::fillPixel(const Region & reg, uint32_t pixel, const PixelFormat* fmt)
-    {
-        auto raw = fmt ? pixelFormat().convertFrom(*fmt, pixel) : pixel;
-
-        for(int yy = 0; yy < reg.h; ++yy)
-            setPixelRow(reg.topLeft() + Point(0, yy), raw, reg.w);
-    }
-
     void FrameBuffer::setColor(const Point & pos, const Color & col)
     {
         setPixelRow(pos, pixelFormat().pixel(col), 1);
     }
 
-    void FrameBuffer::fillColor(const Region & reg, const Color & col)
+    void FrameBuffer::fillPixel(const Region & reg0, uint32_t pixel, const PixelFormat* fmt)
     {
-        auto raw = pixelFormat().pixel(col);
+        Region reg;
+        if(Region::intersection(region(), reg0, & reg))
+        {
+            auto raw = fmt ? pixelFormat().convertFrom(*fmt, pixel) : pixel;
 
-        for(int yy = 0; yy < reg.h; ++yy)
-            setPixelRow(reg.topLeft() + Point(0, yy), raw, reg.w);
+            for(int yy = 0; yy < reg.h; ++yy)
+                setPixelRow(reg.topLeft() + Point(0, yy), raw, reg.w);
+        }
     }
 
-    void FrameBuffer::drawRect(const Region & reg, const Color & col)
+    void FrameBuffer::fillColor(const Region & reg0, const Color & col)
     {
-        auto raw = pixelFormat().pixel(col);
-        setPixelRow(reg.topLeft(), raw, reg.w);
-        setPixelRow(reg.topLeft() + Point(0, reg.h - 1), raw, reg.w);
-
-        for(int yy = 1; yy < reg.h - 1; ++yy)
+        Region reg;
+        if(Region::intersection(region(), reg0, & reg))
         {
-            setPixelRow(reg.topLeft() + Point(0, yy), raw, 1);
-            setPixelRow(reg.topLeft() + Point(reg.w - 1, yy), raw, 1);
+            auto raw = pixelFormat().pixel(col);
+
+            for(int yy = 0; yy < reg.h; ++yy)
+                setPixelRow(reg.topLeft() + Point(0, yy), raw, reg.w);
+        }
+    }
+
+    void FrameBuffer::drawRect(const Region & reg0, const Color & col)
+    {
+        Region reg;
+        if(Region::intersection(region(), reg0, & reg))
+        {
+            auto raw = pixelFormat().pixel(col);
+            setPixelRow(reg.topLeft(), raw, reg.w);
+            setPixelRow(reg.topLeft() + Point(0, reg.h - 1), raw, reg.w);
+
+            for(int yy = 1; yy < reg.h - 1; ++yy)
+            {
+                setPixelRow(reg.topLeft() + Point(0, yy), raw, 1);
+                setPixelRow(reg.topLeft() + Point(reg.w - 1, yy), raw, 1);
+            }
         }
     }
 
@@ -720,7 +736,7 @@ namespace RFB
 
     void FrameBuffer::blitRegion(const FrameBuffer & fb, const Region & reg, const Point & pos)
     {
-        auto dst = Region(pos, reg.toSize()).intersected({Point(0, 0), reg.toSize()});
+        auto dst = Region(pos, reg.toSize()).intersected(region());
 
         if(pixelFormat() != fb.pixelFormat())
         {
@@ -733,7 +749,7 @@ namespace RFB
             {
                 auto ptr = fb.pitchData(reg.y + row) + reg.x * fb.bytePerPixel();
                 size_t length = dst.w * fb.bytePerPixel();
-                std::copy(ptr, ptr + length, pitchData(row));
+                std::copy(ptr, ptr + length, pitchData(dst.y + row) + dst.x * bytePerPixel());
             }
         }
     }

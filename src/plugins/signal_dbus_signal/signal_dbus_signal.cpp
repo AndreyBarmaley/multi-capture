@@ -32,7 +32,7 @@
 extern "C" {
 #endif
 
-const int signal_dbus_signal_version = PLUGIN_API;
+const int signal_dbus_signal_version = 20220412;
 
 struct signal_dbus_signal_t
 {
@@ -268,6 +268,14 @@ bool signal_dbus_signal_get_value(void* ptr, int type, void* val)
             if(auto res = static_cast<int*>(val))
             {
                 *res = signal_dbus_signal_version;
+                return true;
+            }
+            break;
+
+        case PluginValue::PluginAPI:
+            if(auto res = static_cast<int*>(val))
+            {
+                *res = PLUGIN_API;
                 return true;
             }
             break;

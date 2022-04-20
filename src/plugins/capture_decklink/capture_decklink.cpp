@@ -33,7 +33,7 @@ extern "C" {
 #endif
 
 using namespace std::chrono_literals;
-const int capture_decklink_version = PLUGIN_API;
+const int capture_decklink_version = 20220412;
 
 struct idname_t
 {
@@ -610,14 +610,15 @@ struct DeckLinkDevice : public IDeckLinkInputCallback
 struct capture_decklink_t : DeckLinkDevice
 {
     int 	        debug;
+    int			noSourceErr;
     size_t              framesPerSec;
     size_t              duration;
 
     std::chrono::time_point<std::chrono::steady_clock> point;
 
-    std::list<Surface>  frames;
+    Frames             frames;
 
-    capture_decklink_t() : debug(0), framesPerSec(25), duration(0)
+    capture_decklink_t() : debug(0), noSourceErr(0), framesPerSec(25), duration(0)
     {
         duration = 1000 / framesPerSec;
         point = std::chrono::steady_clock::now();
@@ -633,6 +634,7 @@ struct capture_decklink_t : DeckLinkDevice
         stopCapture();
 
 	debug = 0;
+	noSourceErr = 0;
         framesPerSec = 25;
         duration = 1000 / framesPerSec;
         frames.clear();
@@ -645,7 +647,11 @@ struct capture_decklink_t : DeckLinkDevice
 
 	if(videoFrame->GetFlags() & bmdFrameHasNoInputSource)
 	{
-	    ERROR("IDeckLinkVideoInputFrame: no input source, flags: " << String::hex(videoFrame->GetFlags()));
+	    if(noSourceErr < 7)
+	    {
+		ERROR("IDeckLinkVideoInputFrame: no input source, flags: " << String::hex(videoFrame->GetFlags()));
+	        noSourceErr++;
+	    }
             return S_FALSE;
 	}
 
@@ -726,20 +732,19 @@ struct capture_decklink_t : DeckLinkDevice
             return E_FAIL;
         }
 
+        // SDL_PIXELFORMAT_BGRA8888
+        uint32_t bmask = 0xFF000000;
+        uint32_t gmask = 0x00FF0000;
+        uint32_t rmask = 0x0000FF00;
+        uint32_t amask = 0x000000FF;
 
-#ifdef SWE_SDL12
-        uint32_t rmask = Surface::defBMask(); // BGR888
-        uint32_t gmask = Surface::defGMask();
-        uint32_t bmask = Surface::defRMask();
-        uint32_t amask = 0;
         SDL_Surface* sf = SDL_CreateRGBSurfaceFrom(imageData, imageWidth, imageHeight,
                             32, imageRowBytes, rmask, gmask, bmask, amask);
-#else
-        SDL_Surface* sf = SDL_CreateRGBSurfaceWithFormatFrom(imageData, imageWidth, imageHeight,
-                            32, imageRowBytes, SDL_PIXELFORMAT_BGRA32);
-#endif
+
         frames.push_back(Surface::copy(sf));
         DisplayScene::pushEvent(nullptr, ActionFrameComplete, this);
+        point = now;
+	noSourceErr = 0;
 
 	return S_OK;
     }
@@ -808,6 +813,14 @@ bool capture_decklink_get_value(void* ptr, int type, void* val)
             if(auto res = static_cast<int*>(val))
             {
                 *res = capture_decklink_version;
+                return true;
+            }
+            break;
+
+        case PluginValue::PluginAPI:
+            if(auto res = static_cast<int*>(val))
+            {
+                *res = PLUGIN_API;
                 return true;
             }
             break;

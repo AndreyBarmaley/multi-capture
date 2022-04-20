@@ -31,7 +31,26 @@
 extern "C" {
 #endif
 
-const int signal_dbus_control_version = PLUGIN_API;
+const int signal_dbus_control_version = 20220412;
+
+#ifdef SWE_SDL12
+union DBusBasicValue
+{
+  unsigned char bytes[8];
+  dbus_int16_t  i16;
+  dbus_uint16_t u16;
+  dbus_int32_t  i32;
+  dbus_uint32_t u32;
+  dbus_bool_t   bool_val;
+  dbus_int64_t  i64;
+  dbus_uint64_t u64;
+  //DBus8ByteStruct eight;
+  double dbl;
+  unsigned char byt;
+  char *str;
+  int fd;
+};
+#endif
 
 struct signal_dbus_control_t
 {
@@ -239,11 +258,19 @@ bool signal_dbus_control_get_value(void* ptr, int type, void* val)
                 return true;
             }
             break;
-    
+
         case PluginValue::PluginVersion:
             if(auto res = static_cast<int*>(val))
             {
                 *res = signal_dbus_control_version;
+                return true;
+            }
+            break;
+
+        case PluginValue::PluginAPI:
+            if(auto res = static_cast<int*>(val))
+            {
+                *res = PLUGIN_API;
                 return true;
             }
             break;

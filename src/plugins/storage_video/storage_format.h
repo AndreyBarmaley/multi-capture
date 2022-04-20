@@ -1,5 +1,5 @@
 /***************************************************************************
- *   Copyright (C) 2018 by MultiCapture team <public.irkutsk@gmail.com>    *
+ *   Copyright (C) 2022 by MultiCapture team <public.irkutsk@gmail.com>    *
  *                                                                         *
  *   Part of the MultiCapture engine:                                      *
  *   https://github.com/AndreyBarmaley/multi-capture                       *
@@ -20,44 +20,20 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
-#include "settings.h"
+#ifndef _STORAGE_AV_FORMAT_
+#define _STORAGE_AV_FORMAT_
 
-std::string Settings::programName(void)
-{
-    return "Multi Capture";
-}
-
-std::string Settings::programDomain(void)
-{
-    return "multi-capture";
-}
-
-std::string Settings::programVersion(void)
-{
-    std::string version;
-    version.append(std::to_string(VERSION));
-#ifdef BUILDDATE
-    version.append(".").append(std::to_string(BUILDDATE));
+#ifdef __cplusplus
+extern "C" {
 #endif
-    return version;
-}
 
-std::string Settings::dataPath(void)
-{
-    return "data";
-}
+#include "libavformat/avformat.h"
 
-std::string Settings::dataLang(const std::string & fn)
-{
-    return Systems::concatePath(Systems::concatePath(dataPath(), "lang"), fn);
+#ifdef __cplusplus
 }
+#endif
 
-std::string Settings::dataFonts(const std::string & fn)
-{
-    return Systems::concatePath(Systems::concatePath(dataPath(), "fonts"), fn);
-}
+bool          AV_PixelFormatEnumToMasks(AVPixelFormat format, int *bpp, uint32_t* rmask, uint32_t* gmask, uint32_t* bmask, uint32_t* amask, bool debug = false);
+AVPixelFormat AV_PixelFormatEnumFromMasks(int bpp, uint32_t rmask, uint32_t gmask, uint32_t bmask, uint32_t amask, bool debug = false);
 
-std::string Settings::dataJson(const std::string & fn)
-{
-    return Systems::concatePath(Systems::concatePath(dataPath(), "json"), fn);
-}
+#endif

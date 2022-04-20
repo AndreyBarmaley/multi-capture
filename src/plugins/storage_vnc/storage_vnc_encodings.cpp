@@ -210,7 +210,7 @@ namespace RFB
                 if(regions.empty())
                     break;
 
-                if(job.wait_for(std::chrono::microseconds(1)) == std::future_status::ready)
+                if(job.wait_for(std::chrono::microseconds(100)) == std::future_status::ready)
                 {
                     job = std::async(std::launch::async, & ServerConnector::sendEncodingRRESubRegion, this, top, regions.front() - top, fb, jobId, corre);
                     regions.pop_front();
@@ -377,7 +377,7 @@ namespace RFB
                 if(regions.empty())
                     break;
 
-                if(job.wait_for(std::chrono::microseconds(1)) == std::future_status::ready)
+                if(job.wait_for(std::chrono::microseconds(100)) == std::future_status::ready)
                 {
                     job = std::async(std::launch::async, & ServerConnector::sendEncodingHextileSubRegion, this, top, regions.front() - top, fb, jobId, zlibver);
                     regions.pop_front();
@@ -628,7 +628,7 @@ namespace RFB
                 if(regions.empty())
                     break;
 
-                if(job.wait_for(std::chrono::microseconds(1)) == std::future_status::ready)
+                if(job.wait_for(std::chrono::microseconds(100)) == std::future_status::ready)
                 {
                     job = std::async(std::launch::async, & ServerConnector::sendEncodingTRLESubRegion, this, top, regions.front() - top, fb, jobId, zrle);
                     regions.pop_front();

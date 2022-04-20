@@ -107,18 +107,15 @@ class CapturePlugin : public BasePlugin
     Surface		surf;
 
     bool                scaleImage;
-    bool                blueFormat;
 
 protected:
     bool                loadFunctions(void);
-    Surface             generateBlueScreen(const std::string &) const;
 
 public:
     CapturePlugin(const PluginParams &, Window &);
     ~CapturePlugin();
 
     const Surface &     getSurface(void);
-    bool                isBlue(const Surface &) const;
     bool		isScaleImage(void) const;
 };
 

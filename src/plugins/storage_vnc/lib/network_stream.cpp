@@ -440,7 +440,7 @@ namespace Network
     void ZlibContext::inflateFlush(const std::vector<uint8_t> & zip)
     {
         std::array<uint8_t, 1024> tmp;
-        next_in = (z_const Bytef*) zip.data();
+        next_in = (Bytef*) zip.data();
         avail_in = zip.size();
 
         do

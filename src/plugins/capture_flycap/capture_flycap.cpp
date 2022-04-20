@@ -31,7 +31,7 @@ extern "C" {
 #endif
 
 using namespace std::chrono_literals;
-const int capture_flycap_version = PLUGIN_API;
+const int capture_flycap_version = 20220412;
 
 struct capture_flycap_t
 {
@@ -45,7 +45,7 @@ struct capture_flycap_t
     size_t              framesPerSec;
     std::thread         thread;
     std::atomic<bool>   shutdown;
-    std::list<Surface>  frames;
+    Frames              frames;
  
     capture_flycap_t() : debug(0), cameraIndex(0), context(nullptr), framesPerSec(25), shutdown(false)
     {
@@ -212,25 +212,22 @@ struct capture_flycap_t
 		    ", stride: " << imageRaw.stride << ", format: " << String::hex(imageRaw.format) << ", size: " << imageRaw.dataSize);
         }
 
-        error = fc2ConvertImageTo(FC2_PIXEL_FORMAT_BGR, & imageRaw, & imageBGR);
+        error = fc2ConvertImageTo(FC2_PIXEL_FORMAT_BGRU, & imageRaw, & imageBGR);
         if(error != FC2_ERROR_OK)
         {
             ERROR("Error in convertImageTo: " << error);
 	    return false;
         }
 
-#ifdef SWE_SDL12
-        uint32_t rmask = Surface::defBMask(); // BGR24
-        uint32_t gmask = Surface::defGMask();
-        uint32_t bmask = Surface::defRMask();
+//#if (__BYTE_ORDER__==__ORDER_LITTLE_ENDIAN__)
+//#endif
+
+        // SDL_PIXELFORMAT_BGRX8888
+        int bpp = 32; uint32_t bmask = 0xFF000000; uint32_t gmask = 0x00FF0000; uint32_t rmask = 0x0000FF00; uint32_t amask = 0;
+
         SDL_Surface* sf = SDL_CreateRGBSurfaceFrom(imageBGR.pData,
-                            imageBGR.cols, imageBGR.rows,
-                            24, imageBGR.stride, rmask, gmask, bmask, 0);
-#else
-        SDL_Surface* sf = SDL_CreateRGBSurfaceWithFormatFrom(imageBGR.pData,
-                            imageBGR.cols, imageBGR.rows,
-                            24, imageBGR.stride, SDL_PIXELFORMAT_BGR24);
-#endif
+                            imageBGR.cols, imageBGR.rows, bpp, imageBGR.stride, rmask, gmask, bmask, amask);
+
         result = Surface::copy(sf);
         return true;
     }
@@ -347,6 +344,14 @@ bool capture_flycap_get_value(void* ptr, int type, void* val)
             if(auto res = static_cast<int*>(val))
             {
                 *res = capture_flycap_version;
+                return true;
+            }
+            break;
+
+        case PluginValue::PluginAPI:
+            if(auto res = static_cast<int*>(val))
+            {
+                *res = PLUGIN_API;
                 return true;
             }
             break;

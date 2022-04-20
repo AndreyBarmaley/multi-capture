@@ -31,7 +31,7 @@ extern "C" {
 #endif
 
 using namespace std::chrono_literals;
-const int capture_vnc_version = PLUGIN_API;
+const int capture_vnc_version = 20220412;
 
 struct capture_vnc_t : RFB::ClientConnector
 {
@@ -41,7 +41,7 @@ struct capture_vnc_t : RFB::ClientConnector
     std::string password;
 
     std::thread thread;
-    std::list<Surface> frames;
+    Frames      frames;
 
     capture_vnc_t(const JsonObject & config) : RFB::ClientConnector(config), debug(0), port(5900)
     {
@@ -174,11 +174,19 @@ bool capture_vnc_get_value(void* ptr, int type, void* val)
                 return true;
             }
             break;
-    
+
         case PluginValue::PluginVersion:
             if(auto res = static_cast<int*>(val))
             {
                 *res = capture_vnc_version;
+                return true;
+            }
+            break;
+
+        case PluginValue::PluginAPI:
+            if(auto res = static_cast<int*>(val))
+            {
+                *res = PLUGIN_API;
                 return true;
             }
             break;
@@ -209,6 +217,7 @@ bool capture_vnc_get_value(void* ptr, int type, void* val)
                     if(! st->frames.empty())
                     {
                         res->setSurface(st->frames.front());
+                        st->frames.pop_front();
                         return true;
                     }
                     return false;

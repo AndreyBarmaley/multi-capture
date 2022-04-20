@@ -32,13 +32,14 @@ extern "C" {
 #endif
 
 using namespace std::chrono_literals;
-const int capture_ffmpeg_version = PLUGIN_API;
+const int capture_ffmpeg_version = 20220412;
 
 #include "libavdevice/avdevice.h"
 #include "libavcodec/avcodec.h"
 #include "libavformat/avformat.h"
 #include "libavformat/avio.h"
 #include "libswscale/swscale.h"
+#include "libavutil/imgutils.h"
 
 // centos6, ffmpeg 2.6.8:  LIBAVFORMAT_VERSION_INT == AV_VERSION_INT(56,25,101)
 // centos7, ffmpeg 2.8.15:  LIBAVFORMAT_VERSION_INT == AV_VERSION_INT(56,40,101)
@@ -46,12 +47,7 @@ const int capture_ffmpeg_version = PLUGIN_API;
 // fedora24, ffmpeg 3.1.9: LIBAVFORMAT_VERSION_INT == AV_VERSION_INT(57,41,100)
 // fedora26, ffmpeg 3.3.7: LIBAVFORMAT_VERSION_INT == AV_VERSION_INT(57,71,100)
 // fedora28, ffmpeg 4.0.4: LIBAVFORMAT_VERSION_INT == AV_VERSION_INT(58,3,100)
-
-#if LIBAVFORMAT_VERSION_MAJOR < 53
-#define FFMPEG_OLD_API 1
-#else
-#include "libavutil/imgutils.h"
-#endif
+// fedora32, ffmpeg 4.2.4: LIBAVFORMAT_VERSION_INT == AV_VERSION_INT(58,29,100)
 
 #if defined(__LINUX__)
 #include <fcntl.h>
@@ -72,7 +68,11 @@ struct AVPacketDeleter
 {
     void operator()(AVPacket* ptr)
     {
+#if LIBAVFORMAT_VERSION_MAJOR > 56
         av_packet_free(& ptr);
+#else
+	av_packet_unref(ptr);
+#endif
     }
 };
 
@@ -121,11 +121,7 @@ public:
         if(ctxCodec)
             avcodec_free_context(&ctxCodec);
 #endif
-#ifdef FFMPEG_OLD_API
         if(ctxCodec) avcodec_close(ctxCodec);
-#else
-        if(ctxCodec) avcodec_close(ctxCodec);
-#endif
     }
 
     bool valid(void) const
@@ -181,41 +177,22 @@ public:
 class VideoFormat
 {
     AVFormatContext*	ctxFormat;
-#ifdef FFMPEG_OLD_API
-    char*		v4l2Standard;
-#else
     AVDictionary*       v4l2Params;
-#endif
 
     std::unique_ptr<uint8_t, decltype(av_free)*> avBuffer{nullptr, av_free};
     std::unique_ptr<SwsContext, SwsContextDeleter> ctxSws;
 
 public:
-    VideoFormat() : ctxFormat(nullptr),
-#ifdef FFMPEG_OLD_API
-        v4l2Standard(nullptr)
-#else
-        v4l2Params(nullptr)
-#endif
+    VideoFormat() : ctxFormat(nullptr), v4l2Params(nullptr)
     {
     }
 
     ~VideoFormat()
     {
-#ifdef FFMPEG_OLD_API
-        if(ctxFormat)
-            av_close_input_file(ctxFormat);
-#else
         if(ctxFormat)
             avformat_close_input(& ctxFormat);
-#endif
-#ifdef FFMPEG_OLD_API
-    	if(v4l2Standard)
-            free(v4l2Standard);
-#else
     	if(v4l2Params)
             av_dict_free(&v4l2Params);
-#endif
     }
 
     static int v4l2ChannelInput(const std::string & dev, const std::string & channel)
@@ -277,83 +254,32 @@ public:
                 ERROR("unknown ffmpeg format: " << ffmpegFormat);
         }
 
-#ifdef FFMPEG_OLD_API
-	AVFormatParameters v4l2Params;
-	AVFormatParameters* curParams = nullptr;
-
-        auto c_string_dup = [](const std::string & str)
-        {
-            size_t len = str.size();
-            char* res = (char*) malloc(len + 1);
-            if(res)
-            {
-                std::copy(str.begin(), str.end(), res);
-                res[len] = 0;
-            }
-            return res;
-        };
-
-	if(ffmpegFormat == "video4linux2")
-	{
-	    if(config.hasKey("video4linux2:standard"))
-	    {
-		std::string v4l2_standard = String::toUpper(config.getString("video4linux2:standard", "PAL"));
-		DEBUG("params: " << "video4linux2:standard = " << v4l2_standard);
-		v4l2Params.standard = v4l2Standard = c_string_dup(v4l2_standard);
-		curParams = & v4l2Params;
-	    }
-
-	    if(config.hasKey("video4linux2:input"))
-	    {
-		std::string v4l2_input = String::toLower(config.getString("video4linux2:input", "s-video"));
-		DEBUG("params: " << "video4linux2:input = " << v4l2_input);
-		v4l2Params.channel = v4l2ChannelInput(ffmpegDevice, v4l2_input);
-		curParams = & v4l2Params;
-	    }
-
-	    if(config.hasKey("video4linux2:size"))
-	    {
-		Size v4l2_size = JsonUnpack::size(config, "video4linux2:size", Size(720, 576));
-		DEBUG("params: " << "video4linux2:size = " << v4l2_size.toString());
-		v4l2Params.width = v4l2_size.w;
-		v4l2Params.height = v4l2_size.h;
-		curParams = & v4l2Params;
-	    }
-	}
-
-	int err = av_open_input_file(& ctxFormat, ffmpegDevice.c_str(), pFormatInput, 0, curParams);
-#else
 	AVDictionary** curParams = nullptr;
 
-	if(ffmpegFormat == "video4linux2")
-	{
-	    if(config.hasKey("video4linux2:standard"))
-	    {
-		std::string v4l2_standard = String::toUpper(config.getString("video4linux2:standard", "PAL"));
-		DEBUG("params: " << "video4linux2:standard = " << v4l2_standard);
-		av_dict_set(& v4l2Params, "video_standard", v4l2_standard.c_str(), 0);
-		curParams = & v4l2Params;
-	    }
+        // example { "video_standard": "PAL", "video_input": "s-video", "video_size": "640x480" }
+        if(auto ffmpegOptions = config.getObject("ffmpeg:options"))
+        {
+            for(auto & key : ffmpegOptions->keys())
+            {
+                if(JsonType::Integer == ffmpegOptions->getType(key))
+                {
+                    int err = av_dict_set_int(& v4l2Params, key.c_str(), ffmpegOptions->getInteger(key), 0);
+                    if(err < 0)
+                        ERROR("av_dict_set_int failed, error: " << err);
+                }
+                else
+                {
+                    auto val = ffmpegOptions->getString(key);
+                    int err = av_dict_set(& v4l2Params, key.c_str(), val.c_str(), 0);
+                    if(err < 0)
+                        ERROR("av_dict_set failed, error: " << err);
+                }
+            }
 
-	    if(config.hasKey("video4linux2:input"))
-	    {
-		std::string v4l2_input = String::toLower(config.getString("video4linux2:input", "s-video"));
-		DEBUG("params: " << "video4linux2:input = " << v4l2_input);
-		int input = v4l2ChannelInput(ffmpegDevice, v4l2_input);
-		av_dict_set_int(& v4l2Params, "video_input", input, 0);
-		curParams = & v4l2Params;
-	    }
+	    curParams = & v4l2Params;
+        }
 
-	    if(config.hasKey("video4linux2:size"))
-	    {
-		Size v4l2_size = JsonUnpack::size(config, "video4linux2:size", Size(720, 576));
-		DEBUG("params: " << "video4linux2:size = " << v4l2_size.toString());
-		std::string strsz = StringFormat("%1x%2").arg(v4l2_size.w).arg(v4l2_size.h);
-		av_dict_set(& v4l2Params, "video_size", strsz.c_str(), 0);
-		curParams = & v4l2Params;
-	    }
-	}
-
+        // compatible
 	if(config.hasKey("init:timeout"))
 	{
 	    int timeout = config.getInteger("init:timeout", 0);
@@ -367,7 +293,6 @@ public:
 	}
 
 	int err = avformat_open_input(& ctxFormat, ffmpegDevice.c_str(), pFormatInput, curParams);
-#endif
     	if(err < 0)
         {
             ERROR("unable to open input, device: " << ffmpegDevice << ", format: " << ffmpegFormat << ", error: " << err);
@@ -384,11 +309,7 @@ public:
 
     std::pair<AVStream*, int> findVideoStreamIndex(void) const
     {
-#ifdef FFMPEG_OLD_API
-        int err = av_find_stream_info(ctxFormat);
-#else
         int err = avformat_find_stream_info(ctxFormat, nullptr);
-#endif
         if(err < 0)
         {
             ERROR("unable to find stream info, error: " << err);
@@ -411,31 +332,13 @@ public:
 
     bool frameToSurface(const VideoCodec & videoCodec, int streamIndex, int debug, Surface & result)
     {
-#ifdef FFMPEG_OLD_API
-        std::unique_ptr<AVFrame, AVFrameDeleter> pFrame(avcodec_alloc_frame());
-        std::unique_ptr<AVFrame, AVFrameDeleter> pFrameRGB(avcodec_alloc_frame());
-
-        if(!avBuffer)
-        {
-            int numBytes = avpicture_get_size(PIX_FMT_RGB24, videoCodec.width(), videoCodec.height());
-            uint8_t* ptr = (uint8_t*) av_malloc(numBytes);
-            avBuffer.reset(ptr);
-        }
-
-        if(! ctxSws)
-        {
-            ctxSws.reset(sws_getContext(videoCodec.width(), videoCodec.height(), videoCodec.pixelFormat(),
-                            videoCodec.width(), videoCodec.height(), PIX_FMT_RGB24, SWS_BILINEAR, nullptr, nullptr, nullptr))
-        }
-
-        avpicture_fill((AVPicture*) pFrameRGB, avBuffer.get(), PIX_FMT_RGB24, videoCodec.width(), videoCodec.height());
-#else
         std::unique_ptr<AVFrame, AVFrameDeleter> pFrame(av_frame_alloc());
         std::unique_ptr<AVFrame, AVFrameDeleter> pFrameRGB(av_frame_alloc());
+        const AVPixelFormat avPixFmt = AV_PIX_FMT_0RGB;
 
         if(! avBuffer)
         {
-            int numBytes = av_image_get_buffer_size(AV_PIX_FMT_RGB24, videoCodec.width(), videoCodec.height(), 1);
+            int numBytes = av_image_get_buffer_size(avPixFmt, videoCodec.width(), videoCodec.height(), 1);
             uint8_t* ptr = (uint8_t*) av_malloc(numBytes);
             avBuffer.reset(ptr);
         }
@@ -443,18 +346,23 @@ public:
         if(! ctxSws)
         {
             ctxSws.reset(sws_getContext(videoCodec.width(), videoCodec.height(), videoCodec.pixelFormat(),
-                        videoCodec.width(), videoCodec.height(), AV_PIX_FMT_RGB24, SWS_BILINEAR, nullptr, nullptr, nullptr));
+                        videoCodec.width(), videoCodec.height(), avPixFmt, SWS_BILINEAR, nullptr, nullptr, nullptr));
         }
 
-        av_image_fill_arrays(pFrameRGB->data, pFrameRGB->linesize, avBuffer.get(), AV_PIX_FMT_RGB24, videoCodec.width(), videoCodec.height(), 1);
-#endif
+        av_image_fill_arrays(pFrameRGB->data, pFrameRGB->linesize, avBuffer.get(), avPixFmt, videoCodec.width(), videoCodec.height(), 1);
+
         int frameFinished = 0;
         int fixme = 0;
 
         while(true)
         {
+#if LIBAVFORMAT_VERSION_MAJOR > 56
             std::unique_ptr<AVPacket, AVPacketDeleter> pkt(av_packet_alloc());
-
+#else
+	    AVPacket _pkt;
+	    av_init_packet(& _pkt);
+            std::unique_ptr<AVPacket, AVPacketDeleter> pkt(& _pkt);
+#endif
             int err = av_read_frame(ctxFormat, pkt.get());
             if(0 != err)
             {
@@ -469,7 +377,7 @@ public:
 
                 if(0 < frameFinished)
                 {
-                    if(pFrame->interlaced_frame && fixme < 50)
+                    if(pFrame->interlaced_frame && fixme < 20)
                     {
                         DEBUG("FIXME interlaced frame"); fixme++;
                         //https://stackoverflow.com/questions/31163120/c-applying-filter-in-ffmpeg
@@ -485,15 +393,17 @@ public:
                             ", data size: " << pFrameRGB->linesize[0] * videoCodec.height() << ", pixelFormat: " << "RGB24");
                     }
 
-#ifdef SWE_SDL12
+#if (__BYTE_ORDER__==__ORDER_LITTLE_ENDIAN__)
+                    // AV_PIX_FMT_0RGB -> SDL_PIXELFORMAT_BGRX8888
+                    int bpp = 32; uint32_t bmask = 0xFF000000; uint32_t gmask = 0x00FF0000; uint32_t rmask = 0x0000FF00; uint32_t amask = 0;
+#else
+                    // AV_PIX_FMT_0RGB -> SDL_PIXELFORMAT_XRGB8888
+                    int bpp = 32; uint32_t amask = 0; uint32_t rmask = 0x00FF0000; uint32_t gmask = 0x0000FF00; uint32_t bmask = 0x000000FF;
+#endif
                     SDL_Surface* sf = SDL_CreateRGBSurfaceFrom(pFrameRGB->data[0],
                             videoCodec.width(), videoCodec.height(),
-                            24, pFrameRGB->linesize[0], Surface::defRMask(), Surface::defGMask(), Surface::defBMask(), 0);
-#else
-                    SDL_Surface* sf = SDL_CreateRGBSurfaceWithFormatFrom(pFrameRGB->data[0],
-                            videoCodec.width(), videoCodec.height(),
-                            24, pFrameRGB->linesize[0], SDL_PIXELFORMAT_RGB24);
-#endif
+                            bpp, pFrameRGB->linesize[0], rmask, gmask, bmask, amask);
+
                     av_frame_unref(pFrame.get());
                     av_frame_unref(pFrameRGB.get());
 
@@ -518,7 +428,7 @@ struct capture_ffmpeg_t
     std::unique_ptr<VideoFormat> videoFormat;
     std::unique_ptr<VideoCodec> videoCodec;
 
-    std::list<Surface>  frames;
+    Frames              frames;
 
     capture_ffmpeg_t() : debug(0), streamIndex(-1), framesPerSec(25), shutdown(false)
     {
@@ -529,7 +439,6 @@ struct capture_ffmpeg_t
 	clear();
     }
 
-#ifndef FFMPEG_OLD_API
     void listDevices(void)
     {
 	// list format
@@ -556,15 +465,11 @@ struct capture_ffmpeg_t
     	    avdevice_free_list_devices(&device_list);
 	}
     }
-#endif
 
     bool init(const std::string & ffmpegDevice, const std::string & ffmpegFormat, const JsonObject & config)
     {
 	av_log_set_level(3 < debug ? AV_LOG_DEBUG : AV_LOG_ERROR);
 
-#ifdef FF_OLD_API
-	avdevice_register_all();
-#else
 #if LIBAVFORMAT_VERSION_MAJOR < 58
 	av_register_all();
 #endif
@@ -572,7 +477,7 @@ struct capture_ffmpeg_t
 	avdevice_register_all();
 
 	listDevices();
-#endif
+
         videoFormat.reset(new VideoFormat());
         videoCodec.reset(new VideoCodec());
 
@@ -724,6 +629,14 @@ bool capture_ffmpeg_get_value(void* ptr, int type, void* val)
             if(auto res = static_cast<int*>(val))
             {
                 *res = capture_ffmpeg_version;
+                return true;
+            }
+            break;
+
+        case PluginValue::PluginAPI:
+            if(auto res = static_cast<int*>(val))
+            {
+                *res = PLUGIN_API;
                 return true;
             }
             break;

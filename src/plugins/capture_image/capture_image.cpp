@@ -30,7 +30,7 @@ extern "C" {
 #endif
 
 using namespace std::chrono_literals;
-const int capture_image_version = PLUGIN_API;
+const int capture_image_version = 20220412;
 
 struct capture_image_t
 {
@@ -42,7 +42,7 @@ struct capture_image_t
     size_t             framesPerSec;
     std::thread        thread;
     std::atomic<bool>  shutdown;
-    std::list<Surface> frames;
+    Frames             frames;
 
     capture_image_t() : debug(0), staticImage(true), framesPerSec(1), shutdown(false)
     {
@@ -102,12 +102,10 @@ struct capture_image_t
                     std::this_thread::sleep_for(std::chrono::milliseconds(1));
                     continue;
                 }
-                else
-                if(timeMS > std::chrono::milliseconds(duration))
+
+                if(3 < st->debug)
                 {
-                    if(st->debug)
-                        ERROR("incorrect fps:sec, calculate: " << 1000 / timeMS.count() << "fps");
-                    duration = timeMS.count();
+                    DEBUG("calculate fps: " << 1000 / timeMS.count() << "fps");
                 }
 
                 if(Systems::isFile(st->fileImage))
@@ -117,6 +115,7 @@ struct capture_image_t
 	            if(! frame.isValid())
                     {
 	                ERROR("unknown image format, file: " << st->fileImage);
+                        std::this_thread::sleep_for(std::chrono::milliseconds(300));
                         point = std::chrono::steady_clock::now();
                         continue;
                     }
@@ -205,6 +204,14 @@ bool capture_image_get_value(void* ptr, int type, void* val)
             if(auto res = static_cast<int*>(val))
             {
                 *res = capture_image_version;
+                return true;
+            }
+            break;
+
+        case PluginValue::PluginAPI:
+            if(auto res = static_cast<int*>(val))
+            {
+                *res = PLUGIN_API;
                 return true;
             }
             break;

@@ -35,7 +35,7 @@ namespace RFB
 {
     /* Connector */
     ClientConnector::ClientConnector(const SWE::JsonObject & jo)
-        : streamIn(nullptr), streamOut(nullptr), debug(0), sdlFormat(0), loopMessage(true), config(& jo)
+        : streamIn(nullptr), streamOut(nullptr), debug(0), loopMessage(true), config(& jo)
     {
         debug = config->getInteger("debug", 0);
 
@@ -235,31 +235,10 @@ namespace RFB
         bool big_endian = true;
 #endif
 
-#ifdef SWE_SDL12
         // bpp: 32, depth: 24, bigendian, truecol, rgb format
         auto clientFormat = PixelFormat(serverFormat.bitsPerPixel, 24, big_endian, true,
                                 serverFormat.rmask(), serverFormat.gmask(), serverFormat.bmask());
-#else
-        uint32_t rmask = serverFormat.rmask();
-        uint32_t gmask = serverFormat.gmask();
-        uint32_t bmask = serverFormat.bmask();
-        uint32_t amask = 0;
-        int bpp = serverFormat.bitsPerPixel;
 
-        sdlFormat = SDL_MasksToPixelFormatEnum(bpp, rmask, gmask, bmask, amask);
-        if(SDL_PIXELFORMAT_UNKNOWN == sdlFormat)
-        {
-            sdlFormat = SDL_PIXELFORMAT_RGBX8888;
-            SDL_PixelFormatEnumToMasks(sdlFormat, &bpp, &rmask, &gmask, &bmask, &amask);
-            ERROR("compatible format not found, switch to: " << SDL_GetPixelFormatName(sdlFormat))
-        }
-        else
-        if(2 < debug)
-        {
-            DEBUG("compatible format found: " << SDL_GetPixelFormatName(sdlFormat))
-        }
-        auto clientFormat = PixelFormat(bpp, 24, big_endian, true, rmask, gmask, bmask);
-#endif
         fbPtr.reset(new FrameBuffer(Region(0, 0, fbWidth, fbHeight), clientFormat));
 
         // recv name desktop
@@ -276,22 +255,23 @@ namespace RFB
     {
         std::initializer_list<int> encodings = { ENCODING_LAST_RECT,
                                         ENCODING_ZRLE, ENCODING_TRLE, ENCODING_HEXTILE,
-                                        ENCODING_CORRE, ENCODING_RRE, ENCODING_RAW };
+                                        ENCODING_ZLIB, ENCODING_CORRE, ENCODING_RRE, ENCODING_RAW };
 
         clientSetEncodings(encodings);
         clientPixelFormat();
+        // request full update
         clientFrameBufferUpdateReq(false);
 
         if(this->debug)
             DEBUG("RFB 1.7.5" << ", wait remote messages...");
 
-        auto cur = std::chrono::system_clock::now();
+        auto cur = std::chrono::steady_clock::now();
 
         while(this->loopMessage)
         {
-            auto now = std::chrono::system_clock::now();
+            auto now = std::chrono::steady_clock::now();
 
-            if(std::chrono::milliseconds(2500) <= now - cur)
+            if(std::chrono::milliseconds(300) <= now - cur)
             {
                 // request incr update
                 clientFrameBufferUpdateReq(true);
@@ -486,14 +466,10 @@ namespace RFB
     {
         const std::lock_guard<std::mutex> lock(fbChange);
 
-#ifdef SWE_SDL12
         auto & pixelFormat = fbPtr->pixelFormat();
         SDL_Surface* ptr = SDL_CreateRGBSurfaceFrom(fbPtr->pitchData(0), fbPtr->width(), fbPtr->height(),
                             fbPtr->bitsPerPixel(), fbPtr->pitchSize(), pixelFormat.rmask(), pixelFormat.gmask(), pixelFormat.bmask(), 0);
-#else
-        SDL_Surface* ptr = SDL_CreateRGBSurfaceWithFormatFrom(fbPtr->pitchData(0),
-                            fbPtr->width(), fbPtr->height(), fbPtr->bitsPerPixel(), fbPtr->pitchSize(), sdlFormat);
-#endif
+
         sf = Surface::copy(ptr);
     }
 

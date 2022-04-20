@@ -60,6 +60,7 @@ namespace RFB
         std::list< std::future<void> > jobsEncodings;
         std::pair<sendEncodingFunc, int> prefEncodings;
 
+        SWE::Surface       fbSurf;
         std::unique_ptr<FrameBuffer> fbPtr;
         const SWE::JsonObject* config;
 

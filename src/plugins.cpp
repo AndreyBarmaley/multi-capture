@@ -244,10 +244,11 @@ bool BasePlugin::loadFunctions(void)
         return false;
     }
 
-    int ver = pluginVersion();
-    if(PLUGIN_API != ver)
+    int pluginAPI = 0;
+    if(! fun_get_value(nullptr, PluginValue::PluginAPI, & pluginAPI) ||
+        PLUGIN_API != pluginAPI)
     {
-        ERROR("incorrect plugin version: " << ver << ", current API: " << PLUGIN_API << ", plugin: " << pluginName());
+        ERROR("incorrect plugin version: " << pluginAPI << ", current API: " << PLUGIN_API << ", plugin: " << pluginName());
         return false;
     }
 
@@ -278,15 +279,12 @@ int BasePlugin::pluginType(void) const
 
 /* CapturePlugin */
 CapturePlugin::CapturePlugin(const PluginParams & params, Window & parent) : BasePlugin(params, parent),
-    scaleImage(false), blueFormat(true)
+    scaleImage(false)
 {
-    surf = generateBlueScreen(_("error"));
     scaleImage = params.config.getBoolean("scale");
 
     if(loadFunctions())
     {
-        surf = generateBlueScreen(_("initialize"));
-
 	thread = std::thread([this, win = & parent](){
             if(this->data)
 	    {
@@ -325,21 +323,6 @@ bool CapturePlugin::isScaleImage(void) const
     return scaleImage;
 }
 
-Surface CapturePlugin::generateBlueScreen(const std::string & label) const
-{
-    Size winsz = JsonUnpack::size(config, "window:size");
-    auto res = Surface(winsz);
-    res.clear(Color::Blue);
-    auto screen = static_cast<MainScreen*>(parent->parent());
-    if(screen)
-    {
-        const FontRender & frs = screen->fontRender();
-        Size sfsz = frs.stringSize(label);
-        frs.renderString(label, Color::White, (winsz - sfsz) / 2, res);
-    }
-    return res;
-}
-
 bool CapturePlugin::loadFunctions(void)
 {
     if(! isValid())
@@ -360,18 +343,10 @@ const Surface & CapturePlugin::getSurface(void)
 	}
 
 	if(PluginResult::DefaultOk == threadResult)
-        {
-            bool res = fun_get_value(data, PluginValue::CaptureSurface, & surf);
-            if(res) blueFormat = false;
-        }
+            fun_get_value(data, PluginValue::CaptureSurface, & surf);
     }
 
     return surf;
-}
-
-bool CapturePlugin::isBlue(const Surface & sf) const
-{
-    return blueFormat;
 }
 
 /* StoragePlugin */

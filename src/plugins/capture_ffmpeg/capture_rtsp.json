@@ -2,6 +2,7 @@
     "debug":	1,
     "device":	"rtsp://kkm-videocam:554/live1.sdp",
     "format":	"rtsp",
+    "ffmpeg:options": { },
     "init:timeout": 5000,
     "scale":	true
 }

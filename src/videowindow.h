@@ -66,6 +66,8 @@ protected:
     bool                actionStorageBack(void* data);
     bool                actionSignalName(void* data);
 
+    Surface             generateBlueScreen(const std::string &, const Size &, const FontRender &);
+
 public:
     VideoWindow(const WindowParams &, Window & parent);
 

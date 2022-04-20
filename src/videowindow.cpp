@@ -72,8 +72,8 @@ WindowParams::WindowParams(const JsonObject & jo, const MainScreen* main) : skip
 }
 
 /* VideoWindow */
-VideoWindow::VideoWindow(const WindowParams & params, Window & parent) : Window(params.position, params.position, & parent),
-    WindowParams(params)
+VideoWindow::VideoWindow(const WindowParams & params, Window & parent)
+    : Window(params.position, params.position, & parent), WindowParams(params)
 {
     if(labelName.empty())
 	labelName = String::hex(Window::id());
@@ -83,6 +83,10 @@ VideoWindow::VideoWindow(const WindowParams & params, Window & parent) : Window(
 
     resetState(FlagModality);
     setState(FlagKeyHandle);
+
+    auto screen = static_cast<MainScreen*>(& parent);
+    if(screen)
+        back = generateBlueScreen(_("error"), size(), screen->fontRender());
 
     // init capture plugin
     auto it = std::find_if(plugins.begin(), plugins.end(), [](auto & val){ return val.isCapture(); });
@@ -99,6 +103,9 @@ VideoWindow::VideoWindow(const WindowParams & params, Window & parent) : Window(
 	{
 	    captureParams.config.addArray("window:size", JsonPack::size( size() ));
 	    capturePlugin.reset(new CapturePlugin(captureParams, *this));
+    
+            if(screen)
+                back = generateBlueScreen(_("initialize"), size(), screen->fontRender());
 	}
 	else
 	{
@@ -148,31 +155,29 @@ VideoWindow::VideoWindow(const WindowParams & params, Window & parent) : Window(
 	}
     }
 
-    renderWindow();
     setVisible(true);
+}
+
+Surface VideoWindow::generateBlueScreen(const std::string & label, const Size & winsz, const FontRender & frs)
+{
+    auto res = Surface(winsz);
+    res.clear(Color::Blue);
+
+    Size sfsz = frs.stringSize(label);
+    frs.renderString(label, Color::White, (winsz - sfsz) / 2, res);
+
+    return res;
 }
 
 void VideoWindow::renderWindow(void)
 {
     // capture
-    if(capturePlugin)
+    if(back.isValid())
     {
-	if(back.isValid())
-	{
-	    Rect rt1 = back.rect();
-	    Rect rt2 = rect();
+	Rect rt1 = back.rect();
+	Rect rt2 = rect();
 
-	    if(capturePlugin->isScaleImage())
-		Display::renderSurface(back, rt1, Display::texture(), rt2 + Window::position());
-	    else
-	    {
-		Window::renderSurface(back, rt1, (rt2.toSize() - rt1.toSize()) / 2);
-	    }
-	}
-	else
-	{
-	    renderClear(fillColor);
-	}
+	Window::renderSurface(back, rt1, (rt2.toSize() - rt1.toSize()) / 2);
     }
     else
     {
@@ -239,14 +244,33 @@ bool VideoWindow::actionFrameComplete(void* data)
     if(! capturePlugin->isData(data))
         return false;
 
-    back = capturePlugin->getSurface();
+    auto sf = capturePlugin->getSurface();
+    if(sf.isValid())
+    {
+	// store to all storage
+	for(auto & plugin : storagePlugins)
+	    if(plugin && plugin->isInitComplete())
+        	plugin->setSurface(sf);
 
-    // store to all storage
-    for(auto & plugin : storagePlugins)
-	if(plugin && plugin->isInitComplete() && ! capturePlugin->isBlue(back))
-            plugin->setSurface(back);
+        // scale
+        if(capturePlugin->isScaleImage() &&
+            sf.size() != back.size())
+        {
+            float scaleX = width() / static_cast<float>(sf.width());
+            float scaleY = height() / static_cast<float>(sf.height());
+            float factor = scaleY > scaleX ? scaleY : scaleX;
+            Size zoom(sf.width() * factor, sf.height() * factor);
 
-    renderWindow();
+            back = Surface::scale(sf, zoom, true);
+        }
+        else
+        {
+            back = sf;
+        }
+
+        DisplayScene::setDirty(true);
+    }
+
     return true;
 }
 
@@ -261,6 +285,13 @@ bool VideoWindow::actionCaptureReset(void* data)
     capturePlugin.reset();
     std::this_thread::sleep_for(100ms);
     capturePlugin.reset(new CapturePlugin(params, *this));
+
+    auto screen = static_cast<MainScreen*>(parent());
+    if(screen)
+    {
+        back = generateBlueScreen(_("initialize"), size(), screen->fontRender());
+        DisplayScene::setDirty(true);
+    }
 
     return true;
 }
