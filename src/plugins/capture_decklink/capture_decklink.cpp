@@ -33,7 +33,7 @@ extern "C" {
 #endif
 
 using namespace std::chrono_literals;
-const int capture_decklink_version = 20220412;
+const int capture_decklink_version = 20220415;
 
 struct idname_t
 {
@@ -732,11 +732,19 @@ struct capture_decklink_t : DeckLinkDevice
             return E_FAIL;
         }
 
+#if (__BYTE_ORDER__==__ORDER_LITTLE_ENDIAN__)
+        // SDL_PIXELFORMAT_ARGB8888
+        uint32_t amask = 0xFF000000;
+        uint32_t rmask = 0x00FF0000;
+        uint32_t gmask = 0x0000FF00;
+        uint32_t bmask = 0x000000FF;
+#else
         // SDL_PIXELFORMAT_BGRA8888
         uint32_t bmask = 0xFF000000;
         uint32_t gmask = 0x00FF0000;
         uint32_t rmask = 0x0000FF00;
         uint32_t amask = 0x000000FF;
+#endif
 
         SDL_Surface* sf = SDL_CreateRGBSurfaceFrom(imageData, imageWidth, imageHeight,
                             32, imageRowBytes, rmask, gmask, bmask, amask);
