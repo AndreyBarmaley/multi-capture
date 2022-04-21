@@ -37,7 +37,7 @@ extern "C" {
 #include "SDL2_rotozoom.h"
 #endif
 
-const int storage_file_version = 20220412;
+const int storage_file_version = 20220415;
 
 struct storage_file_t
 {
@@ -49,7 +49,7 @@ struct storage_file_t
     std::string format;
     std::string filename;
     Surface	surface;
-    Size        scale;
+    Size        geometry;
     std::mutex  change;
 
     storage_file_t() : debug(0), overwrite(false), deinterlace(false), sessionId(0) {}
@@ -81,13 +81,13 @@ void* storage_file_init(const JsonObject & config)
     ptr->overwrite = config.getBoolean("overwrite", false);
     ptr->deinterlace = config.getBoolean("deinterlace", false);
     ptr->format = config.getString("format");
-    ptr->scale = JsonUnpack::size(config, "scale");
+    ptr->geometry = JsonUnpack::size(config, "size");
 
     if(ptr->format.empty())
         ptr->format = config.getString("filename");
 
-    if(! ptr->scale.isEmpty())
-        DEBUG("params: " << "scale = " << ptr->scale.toString());
+    if(! ptr->geometry.isEmpty())
+        DEBUG("params: " << "geometry = " << ptr->geometry.toString());
 
     if(ptr->format.empty())
     {
@@ -171,8 +171,8 @@ int storage_file_store_action(void* ptr, const std::string & signal)
             if(st->deinterlace)
                 st->surface = storage_surface_deinterlace(st->surface);
 
-            if(! st->scale.isEmpty())
-                st->surface = storage_surface_scale(st->surface, st->scale);
+            if(! st->geometry.isEmpty())
+                st->surface = storage_surface_scale(st->surface, st->geometry);
         }
         catch(const std::exception & err)
         {
@@ -262,12 +262,9 @@ bool storage_file_get_value(void* ptr, int type, void* val)
             case PluginValue::StorageSurface:
                 if(auto res = static_cast<Surface*>(val))
                 {
-		    if(res->isValid())
-		    {
-                	const std::lock_guard<std::mutex> lock(st->change);
-                	*res = st->surface;
-                	return true;
-		    }
+                    const std::lock_guard<std::mutex> lock(st->change);
+                    *res = st->surface;
+                    return true;
                 }
                 break;
 

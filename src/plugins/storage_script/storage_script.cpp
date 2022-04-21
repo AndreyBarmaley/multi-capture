@@ -27,7 +27,7 @@
 extern "C" {
 #endif
 
-const int storage_script_version = 20220412;
+const int storage_script_version = 20220415;
 
 struct storage_script_t
 {
@@ -214,12 +214,9 @@ bool storage_script_get_value(void* ptr, int type, void* val)
             case PluginValue::StorageSurface:
                 if(auto res = static_cast<Surface*>(val))
                 {
-		    if(res->isValid())
-		    {
-                	const std::lock_guard<std::mutex> lock(st->change);
-            		res->setSurface(st->surface);
-                	return true;
-		    }
+                    const std::lock_guard<std::mutex> lock(st->change);
+            	    res->setSurface(st->surface);
+                    return true;
                 }
                 break;
 
