@@ -149,7 +149,6 @@ namespace RFB
         DEBUG("using encoding threads: " << encodingThreads);
         bool noAuth = config->getBoolean("noauth", false);
         prefEncodings = selectEncodings();
-        DEBUG("default encoding: " << RFB::encodingName(prefEncodings.second));
         // RFB 6.1.1 version
         const std::string version = SWE::StringFormat("RFB 00%1.00%2\n").arg(RFB::VERSION_MAJOR).arg(RFB::VERSION_MINOR);
         sendString(version).sendFlush();
@@ -419,8 +418,7 @@ namespace RFB
         }
 
         prefEncodings = selectEncodings();
-        if(debug)
-            DEBUG("server select encoding: " << RFB::encodingName(prefEncodings.second));
+        DEBUG("server select encoding: " << RFB::encodingName(prefEncodings.second));
 
         if(std::any_of(clientEncodings.begin(), clientEncodings.end(),
                     [=](auto & val){ return val == RFB::ENCODING_CONTINUOUS_UPDATES; }))

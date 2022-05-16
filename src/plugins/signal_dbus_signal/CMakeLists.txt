@@ -7,7 +7,10 @@ pkg_search_module(DBUS REQUIRED dbus-1)
 target_compile_options(signal_dbus_signal PUBLIC ${DBUS_CFLAGS})
 target_link_options(signal_dbus_signal PUBLIC ${DBUS_LDFLAGS})
 target_link_libraries(signal_dbus_signal ${DBUS_LIBRARIES})
-target_link_libraries(signal_dbus_signal libswe)
+
+add_dependencies(signal_dbus_signal libswe)
+target_link_options(signal_dbus_signal PUBLIC "-L${CMAKE_CURRENT_SOURCE_DIR}/../../../dist/plugins")
+target_link_libraries(signal_dbus_signal libswe.so)
 
 set_target_properties(signal_dbus_signal PROPERTIES PREFIX "")
 set_target_properties(signal_dbus_signal PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}/../../../dist/plugins)

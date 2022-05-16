@@ -32,7 +32,7 @@ extern "C" {
 #endif
 
 using namespace std::chrono_literals;
-const int capture_ffmpeg_version = 20220412;
+const int capture_ffmpeg_version = 20220510;
 
 #include "libavdevice/avdevice.h"
 #include "libavcodec/avcodec.h"
@@ -286,9 +286,23 @@ public:
 	    if(0 < timeout)
 	    {
 		DEBUG("params: " << "init:timeout = " << timeout);
-                // stimeout microsec
-		av_dict_set_int(& v4l2Params, "stimeout", timeout * 1000, 0);
-		curParams = & v4l2Params;
+                if(ffmpegDevice.size() > 4)
+                {
+                    auto proto = ffmpegDevice.substr(0, 4);
+                    if(proto == "http")
+                    {
+                        // timeout microsec
+		        av_dict_set_int(& v4l2Params, "timeout", timeout * 1000, 0);
+                    }
+                    else
+                    if(proto == "rtsp")
+                    {
+                        // socket timeout microsec
+                        av_dict_set_int(& v4l2Params, "stimeout", timeout * 1000, 0);
+                    }
+
+		    curParams = & v4l2Params;
+                }
 	    }
 	}
 

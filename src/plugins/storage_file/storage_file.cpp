@@ -49,7 +49,7 @@ struct storage_file_t
     std::string format;
     std::string filename;
     Surface	surface;
-    Size        geometry;
+    Size        scale;
     std::mutex  change;
 
     storage_file_t() : debug(0), overwrite(false), deinterlace(false), sessionId(0) {}
@@ -81,13 +81,13 @@ void* storage_file_init(const JsonObject & config)
     ptr->overwrite = config.getBoolean("overwrite", false);
     ptr->deinterlace = config.getBoolean("deinterlace", false);
     ptr->format = config.getString("format");
-    ptr->geometry = JsonUnpack::size(config, "size");
+    ptr->scale = JsonUnpack::size(config, "scale");
 
     if(ptr->format.empty())
         ptr->format = config.getString("filename");
 
-    if(! ptr->geometry.isEmpty())
-        DEBUG("params: " << "geometry = " << ptr->geometry.toString());
+    if(! ptr->scale.isEmpty())
+        DEBUG("params: " << "scale = " << ptr->scale.toString());
 
     if(ptr->format.empty())
     {
@@ -171,8 +171,8 @@ int storage_file_store_action(void* ptr, const std::string & signal)
             if(st->deinterlace)
                 st->surface = storage_surface_deinterlace(st->surface);
 
-            if(! st->geometry.isEmpty())
-                st->surface = storage_surface_scale(st->surface, st->geometry);
+            if(! st->scale.isEmpty())
+                st->surface = storage_surface_scale(st->surface, st->scale);
         }
         catch(const std::exception & err)
         {
