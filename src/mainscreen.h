@@ -23,6 +23,7 @@
 #ifndef _CNA_MAIN_SCREEN_
 #define _CNA_MAIN_SCREEN_
 
+#include <map>
 #include <list>
 #include <memory>
 
@@ -52,6 +53,7 @@ class MainScreen : public DisplayWindow
 
     std::list< std::unique_ptr<VideoWindow> > windows;
     std::list< std::unique_ptr<SignalPlugin> > signals;
+    std::map< std::string, std::string > keymap;
 
     std::unique_ptr<FontRender> frs;
     std::unique_ptr<GalleryWindow> gallery;
@@ -70,6 +72,7 @@ public:
     void		renderWindow(void) override;
     const FontRender &  fontRender(void) const;
     void		addImageGallery(const Surface &, const std::string &);
+    void                actionSignalName(const std::string &, const VideoWindow*);
 
     const JsonObject*            getPluginName(const std::string & name) const;
     std::list<const JsonObject*> getPluginsType(const std::string & type) const;

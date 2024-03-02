@@ -29,7 +29,7 @@
 #include "libswe.h"
 using namespace SWE;
 
-#define VERSION 20220412
+#define VERSION 20230227
 #define PLUGIN_API 20220406
 
 enum { ActionNone = 11110, ActionFrameComplete = 11111, ActionCaptureReset = 11112,
@@ -110,6 +110,12 @@ struct Frames : protected std::list<Surface>
     {
         const std::lock_guard<std::mutex> lock(mt);
         std::list<Surface>::push_back(sf);
+    }
+
+    void emplace_back(Surface && sf)
+    {
+        const std::lock_guard<std::mutex> lock(mt);
+        std::list<Surface>::emplace_back(std::move(sf));
     }
 
     void pop_front(void)

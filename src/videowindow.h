@@ -74,6 +74,9 @@ public:
     const std::string &	label(void) const { return labelName; }
     bool		isLabel(const std::string & str) const { return 0 == labelName.compare(str); }
 
+    const Point &       labelPosition(void) const { return labelPos; }
+    void                setLabelPosition(const Point & pt) { labelPos = pt; }
+
     void		renderWindow(void) override;
     void		stopCapture(void);
 

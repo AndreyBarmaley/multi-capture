@@ -109,6 +109,11 @@ MainScreen::MainScreen(const JsonObject & jo) : DisplayWindow(Color::Black), con
 	}
     }
 
+    if(auto map = jo.getObject("keymap"))
+    {
+	keymap = map->toStdMap<std::string>();
+    }
+
     setVisible(true);
 }
 
@@ -168,7 +173,8 @@ const FontRender & MainScreen::fontRender(void) const
 void MainScreen::renderWindow(void)
 {
     renderClear(colorBack);
-    if(dateTimeTexture.isValid()) renderTexture(dateTimeTexture, dateTimePos);
+    if(dateTimeTexture.isValid())
+	renderTexture(dateTimeTexture, dateTimePos);
 }
 
 bool MainScreen::keyPressEvent(const KeySym & key)
@@ -216,6 +222,16 @@ bool MainScreen::keyPressEvent(const KeySym & key)
 		    renderWindow();
 		}
 	    }
+	}
+    }
+
+    if(! keymap.empty())
+    {
+	auto it = keymap.find(Key::toName(key.keycode()));
+	if(it != keymap.end())
+	{
+	    actionSignalName(it->second, nullptr);
+	    return true;
 	}
     }
 
@@ -278,6 +294,7 @@ void MainScreen::tickEvent(u32 ms)
     if(dateTimeTexture.isValid() &&
         ttDateTime.check(ms, 300))
     {
+        dateTimeTexture.reset();
 	dateTimeTexture = Display::renderText(fontRender(), String::strftime(dateTimeFormat), Color::Yellow);
     }
 }
@@ -317,6 +334,51 @@ bool MainScreen::userEvent(int act, void* data)
     }
 
     return false;
+}
+
+void MainScreen::actionSignalName(const std::string & name, const VideoWindow* win)
+{
+    if(name == "shift:positions")
+    {
+	if(1 < windows.size())
+	{
+	    auto frontLabelPos = windows.front()->labelPosition();
+	    auto frontArea = windows.front()->area();
+
+	    auto it1 = windows.begin();
+	    auto it2 = std::next(it1);
+
+	    while(it2 != windows.end())
+	    {
+		const Rect & area = (*it2)->area();
+		const Point & labelPos = (*it2)->labelPosition();
+
+		(*it1)->setSize(area);
+		(*it1)->setPosition(area);
+		(*it1)->setLabelPosition(labelPos);
+
+		it1 = it2;
+		it2 = std::next(it1);
+	    }
+
+	    (*it1)->setSize(frontArea);
+	    (*it1)->setPosition(frontArea);
+	    (*it1)->setLabelPosition(frontLabelPos);
+
+	    auto childs = DisplayScene::findChilds(*this);
+	    if(1 < childs.size())
+	    {
+		auto ptr = childs.front();
+		childs.pop_front();
+		childs.push_back(ptr);
+
+		for(auto win : childs)
+		    DisplayScene::moveTopLayer(*win);
+	    }
+
+	    DisplayScene::setDirty(true);
+	}
+    }
 }
 
 void MainScreen::addImageGallery(const Surface & image, const std::string & location)

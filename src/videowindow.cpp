@@ -258,7 +258,7 @@ bool VideoWindow::actionFrameComplete(void* data)
         {
             float scaleX = width() / static_cast<float>(sf.width());
             float scaleY = height() / static_cast<float>(sf.height());
-            float factor = scaleY > scaleX ? scaleY : scaleX;
+            float factor = scaleY < scaleX ? scaleY : scaleX;
             Size zoom(sf.width() * factor, sf.height() * factor);
 
             back = Surface::scale(sf, zoom, true);
@@ -354,6 +354,11 @@ void VideoWindow::actionSignalName(const std::string & signalName2)
                 plugin->storeAction(signalName);
             }
         }
+    }
+
+    if(auto scr = dynamic_cast<MainScreen*>(parent()))
+    {
+	scr->actionSignalName(signalName2, this);
     }
 }
 

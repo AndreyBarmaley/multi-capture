@@ -20,6 +20,8 @@
  *   59 Temple Place - Suite 330, Boston, MA  02111-1307, USA.             *
  ***************************************************************************/
 
+#include <signal.h>
+
 #include <clocale>
 #include <exception>
 
@@ -54,6 +56,7 @@ namespace Application
 int main(int argc, char **argv)
 {
     LogWrapper::init("multi_capture", argv[0]);
+    signal(SIGPIPE, SIG_IGN);
 
     try
     {
@@ -108,6 +111,11 @@ int main(int argc, char **argv)
     }
     catch(Engine::exception &)
     {
+        ERROR("engine exception");
+    }
+    catch(...)
+    {
+        ERROR("unknown exception");
     }
 
     return EXIT_SUCCESS;
